@@ -12,15 +12,18 @@ This file contains comprehensive instructions for Claude Code to scaffold the Gi
 4. [Request Flow Architecture](#request-flow-architecture)
 5. [Technical Decisions and Rationale](#technical-decisions-and-rationale)
 6. [Directory Structure](#directory-structure-to-create)
-7. [Database Strategy](#database-strategy)
-8. [Authentication & Credential Management](#authentication--credential-management)
-9. [Compliance Policy Code](#compliance-policy-code)
-10. [Key Implementation Requirements](#key-implementation-requirements)
-11. [Development Environment](#development-environment-configurations)
-12. [CI/CD and Deployment](#cicd-pipelines)
-13. [Implementation Phases](#initial-implementation-priority)
-14. [Success Metrics](#success-metrics)
-15. [Final Notes for Claude Code](#final-notes-for-claude-code)
+7. [Web UI Strategy](#web-ui-strategy)
+8. [Database Strategy](#database-strategy)
+9. [Policy Data Management](#policy-data-management)
+10. [Authentication & Credential Management](#authentication--credential-management)
+11. [Compliance Policy Code](#compliance-policy-code)
+12. [Key Implementation Requirements](#key-implementation-requirements)
+13. [Development Environment](#development-environment-configurations)
+14. [CI/CD and Deployment](#cicd-pipelines)
+15. [Implementation Phases](#initial-implementation-priority)
+16. [Post-MVP Roadmap](#post-mvp-roadmap)
+17. [Success Metrics](#success-metrics)
+18. [Final Notes for Claude Code](#final-notes-for-claude-code)
 
 ---
 
@@ -40,9 +43,6 @@ This file contains comprehensive instructions for Claude Code to scaffold the Gi
 **Secondary**: Open-source community edition for self-hosters
 
 ### Repository Strategy
-
-<!-- CLARIFICATION NEEDED: The document previously mentioned both giru-cloud and giru-enterprise 
-     as private repositories. This has been consolidated to giru-enterprise. Please confirm this is correct. -->
 
 | Repository | License | Purpose |
 |------------|---------|---------|
@@ -804,6 +804,13 @@ giru/
 │   │   │   └── cardholder_data.rego
 │   │   └── soc2/
 │   │       └── access_control.rego
+│   ├── data/                        # Default policy data (can be overridden per-tenant)
+│   │   ├── hipaa/
+│   │   │   └── permitted_fields.json
+│   │   ├── pci_dss/
+│   │   │   └── cardholder_zones.json
+│   │   └── soc2/
+│   │       └── user_certifications.json
 │   └── tests/                       # Policy unit tests
 │       └── authorization_test.rego
 │
@@ -863,6 +870,35 @@ giru/
 │   │   └── README.md
 │   └── multi-server/
 │       └── README.md
+│
+├── sdks/                            # SDK placeholders (Phase 5)
+│   ├── typescript/
+│   │   ├── README.md
+│   │   └── package.json
+│   ├── python/
+│   │   ├── README.md
+│   │   └── pyproject.toml
+│   └── go/
+│       ├── README.md
+│       └── go.mod
+│
+├── web-ui/                          # Community Web UI (Svelte)
+│   ├── src/
+│   │   ├── routes/
+│   │   │   ├── +layout.svelte
+│   │   │   ├── +page.svelte         # Dashboard home
+│   │   │   ├── servers/             # MCP server management
+│   │   │   ├── clients/             # Client management
+│   │   │   ├── subscriptions/       # Subscription management
+│   │   │   └── settings/            # Basic settings
+│   │   └── lib/
+│   │       ├── components/          # Reusable UI components
+│   │       ├── stores/              # Svelte stores
+│   │       └── api/                 # API client
+│   ├── package.json
+│   ├── svelte.config.js
+│   ├── vite.config.ts
+│   └── tailwind.config.js
 │
 └── tests/
     ├── integration/
@@ -1047,6 +1083,96 @@ giru-common/
     ├── logger/
     ├── metrics/
     └── validation/
+```
+
+---
+
+## Web UI Strategy
+
+Both Community and Enterprise editions include a Svelte-based Web UI, but with different feature sets.
+
+### Community Web UI Features
+
+The Community Web UI provides full management capabilities for single-tenant deployments:
+
+| Feature | Description |
+|---------|-------------|
+| **Dashboard** | System health, request metrics, active connections |
+| **MCP Servers** | Register, configure, health check MCP backends |
+| **Clients** | Create API keys, manage AI agent access |
+| **Subscriptions** | Grant client access to MCP servers/tools |
+| **Settings** | Basic configuration, environment variables |
+| **Logs Viewer** | Recent requests, errors (last 24 hours) |
+
+### Enterprise Web UI Additional Features
+
+Enterprise builds on Community with advanced management and compliance features:
+
+| Feature | Description |
+|---------|-------------|
+| **Multi-Tenant Management** | Create/manage tenants, resource isolation |
+| **Analytics Dashboard** | Usage trends, cost analysis, ROI metrics |
+| **Compliance Center** | HIPAA/PCI-DSS/SOC2 audit reports, policy violations |
+| **Audit Log Viewer** | Searchable audit trail, export to SIEM |
+| **SSO Configuration** | SAML/OIDC provider setup, user provisioning |
+| **Approval Workflows** | Subscription requests, change approvals |
+| **Billing Dashboard** | Usage metering, invoice generation (SaaS) |
+| **Environment Management** | Dev/staging/prod environment policies |
+
+### UI Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Web UI Architecture                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Community (giru/web-ui/)          Enterprise (giru-enterprise/web-ui/)
+│  ├── Dashboard                     ├── Everything in Community +
+│  ├── Servers                       ├── Tenants
+│  ├── Clients                       ├── Analytics
+│  ├── Subscriptions                 ├── Compliance
+│  └── Settings                      ├── Audit Logs
+│                                    ├── SSO Config
+│                                    └── Billing
+│                                                                 │
+│  Shared Components (via npm package or copy):                  │
+│  - Data tables, forms, modals                                  │
+│  - Charts (Chart.js)                                           │
+│  - API client                                                  │
+│  - Auth context                                                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Build & Embedding Strategy
+
+Both UIs are built as static assets and embedded in the Go binary:
+
+```go
+// internal/api/rest/ui.go
+package rest
+
+import (
+    "embed"
+    "io/fs"
+    "net/http"
+    
+    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v2/middleware/filesystem"
+)
+
+//go:embed all:ui/dist
+var uiAssets embed.FS
+
+func (s *Server) setupUI() {
+    // Serve static assets
+    uiFS, _ := fs.Sub(uiAssets, "ui/dist")
+    s.app.Use("/", filesystem.New(filesystem.Config{
+        Root:       http.FS(uiFS),
+        Browse:     false,
+        Index:      "index.html",
+        NotFoundFile: "index.html", // SPA fallback
+    }))
+}
 ```
 
 ---
@@ -1589,6 +1715,293 @@ db-console: ## Open psql console
 
 ---
 
+## Policy Data Management
+
+OPA policies reference external data (e.g., HIPAA permitted fields, PCI-DSS zones). This section describes how policy data is managed with a hybrid approach: default templates + tenant-specific overrides.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   Policy Data Flow                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. Default Templates (shipped with Giru)                      │
+│     policies/data/hipaa/permitted_fields.json                  │
+│     policies/data/pci_dss/cardholder_zones.json               │
+│                                                                 │
+│  2. Tenant Overrides (stored in PostgreSQL)                    │
+│     policy_data_overrides table                                │
+│                                                                 │
+│  3. Merged Data (cached in Redis)                              │
+│     policy:<tenant_id>:<namespace>:<key>                       │
+│     TTL: 5 minutes                                             │
+│                                                                 │
+│  4. OPA Bundle                                                 │
+│     Control Plane pushes merged data to OPA                    │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Database Schema for Overrides
+
+```sql
+-- Add to db/migrations/00001_init.sql
+
+-- ============================================================================
+-- POLICY DATA OVERRIDES
+-- ============================================================================
+CREATE TABLE policy_data_overrides (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    
+    policy_namespace VARCHAR(100) NOT NULL,  -- 'hipaa', 'pci_dss', 'soc2'
+    data_key VARCHAR(100) NOT NULL,          -- 'permitted_fields', 'cardholder_zones'
+    data_value JSONB NOT NULL,               -- Customer's custom config
+    
+    created_by UUID,                         -- User who created override
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(tenant_id, policy_namespace, data_key)
+);
+
+CREATE INDEX idx_policy_overrides_tenant ON policy_data_overrides(tenant_id);
+CREATE INDEX idx_policy_overrides_namespace ON policy_data_overrides(policy_namespace);
+```
+
+### Go Implementation with Caching
+
+```go
+// internal/policy/data_service.go
+package policy
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+    "time"
+    
+    "github.com/redis/go-redis/v9"
+)
+
+type DataService struct {
+    db     *database.DB
+    redis  *redis.Client
+    defaults map[string]map[string]json.RawMessage // namespace -> key -> data
+}
+
+func NewDataService(db *database.DB, redis *redis.Client) *DataService {
+    svc := &DataService{
+        db:       db,
+        redis:    redis,
+        defaults: make(map[string]map[string]json.RawMessage),
+    }
+    svc.loadDefaults()
+    return svc
+}
+
+// loadDefaults loads default policy data from embedded files
+func (s *DataService) loadDefaults() {
+    // Load from policies/data/ directory (embedded in binary)
+    // Example: hipaa/permitted_fields.json
+}
+
+// GetPolicyData retrieves merged policy data (defaults + overrides) with caching
+func (s *DataService) GetPolicyData(ctx context.Context, tenantID, namespace, key string) (json.RawMessage, error) {
+    cacheKey := fmt.Sprintf("policy:%s:%s:%s", tenantID, namespace, key)
+    
+    // 1. Try cache first
+    if cached, err := s.redis.Get(ctx, cacheKey).Bytes(); err == nil {
+        return cached, nil
+    }
+    
+    // 2. Cache miss - load and merge
+    data, err := s.loadAndMerge(ctx, tenantID, namespace, key)
+    if err != nil {
+        return nil, err
+    }
+    
+    // 3. Cache for 5 minutes
+    s.redis.Set(ctx, cacheKey, data, 5*time.Minute)
+    
+    return data, nil
+}
+
+// loadAndMerge loads defaults and applies tenant overrides
+func (s *DataService) loadAndMerge(ctx context.Context, tenantID, namespace, key string) (json.RawMessage, error) {
+    // Start with defaults
+    defaults, ok := s.defaults[namespace][key]
+    if !ok {
+        return nil, fmt.Errorf("no default data for %s/%s", namespace, key)
+    }
+    
+    // Check for tenant override
+    override, err := s.db.Queries.GetPolicyDataOverride(ctx, database.GetPolicyDataOverrideParams{
+        TenantID:        tenantID,
+        PolicyNamespace: namespace,
+        DataKey:         key,
+    })
+    
+    if err == nil {
+        // Override exists - return it (full replacement)
+        return override.DataValue, nil
+    }
+    
+    // No override - return defaults
+    return defaults, nil
+}
+
+// SetPolicyDataOverride creates or updates a tenant-specific override
+func (s *DataService) SetPolicyDataOverride(ctx context.Context, tenantID, namespace, key string, data json.RawMessage) error {
+    // Validate the data structure matches expected schema
+    if err := s.validateData(namespace, key, data); err != nil {
+        return fmt.Errorf("invalid data structure: %w", err)
+    }
+    
+    // Upsert override
+    err := s.db.Queries.UpsertPolicyDataOverride(ctx, database.UpsertPolicyDataOverrideParams{
+        TenantID:        tenantID,
+        PolicyNamespace: namespace,
+        DataKey:         key,
+        DataValue:       data,
+    })
+    if err != nil {
+        return err
+    }
+    
+    // Invalidate cache
+    cacheKey := fmt.Sprintf("policy:%s:%s:%s", tenantID, namespace, key)
+    s.redis.Del(ctx, cacheKey)
+    
+    return nil
+}
+
+// DeletePolicyDataOverride removes override, reverting to defaults
+func (s *DataService) DeletePolicyDataOverride(ctx context.Context, tenantID, namespace, key string) error {
+    err := s.db.Queries.DeletePolicyDataOverride(ctx, database.DeletePolicyDataOverrideParams{
+        TenantID:        tenantID,
+        PolicyNamespace: namespace,
+        DataKey:         key,
+    })
+    if err != nil {
+        return err
+    }
+    
+    // Invalidate cache
+    cacheKey := fmt.Sprintf("policy:%s:%s:%s", tenantID, namespace, key)
+    s.redis.Del(ctx, cacheKey)
+    
+    return nil
+}
+```
+
+### REST API Endpoints
+
+```go
+// internal/api/rest/handlers/policy_data.go
+
+// GET /api/v1/policies/:namespace/:key
+// Returns merged policy data (defaults + tenant override)
+func (h *PolicyDataHandler) Get(c *fiber.Ctx) error {
+    tenantID := c.Locals("tenant_id").(string)
+    namespace := c.Params("namespace")
+    key := c.Params("key")
+    
+    data, err := h.policyService.GetPolicyData(c.Context(), tenantID, namespace, key)
+    if err != nil {
+        return c.Status(404).JSON(fiber.Map{"error": err.Error()})
+    }
+    
+    return c.JSON(fiber.Map{
+        "namespace": namespace,
+        "key":       key,
+        "data":      data,
+    })
+}
+
+// PUT /api/v1/policies/:namespace/:key
+// Creates or updates tenant-specific override
+func (h *PolicyDataHandler) Set(c *fiber.Ctx) error {
+    tenantID := c.Locals("tenant_id").(string)
+    namespace := c.Params("namespace")
+    key := c.Params("key")
+    
+    var body json.RawMessage
+    if err := c.BodyParser(&body); err != nil {
+        return c.Status(400).JSON(fiber.Map{"error": "invalid JSON"})
+    }
+    
+    if err := h.policyService.SetPolicyDataOverride(c.Context(), tenantID, namespace, key, body); err != nil {
+        return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+    }
+    
+    return c.Status(200).JSON(fiber.Map{"status": "updated"})
+}
+
+// DELETE /api/v1/policies/:namespace/:key
+// Removes override, reverts to defaults
+func (h *PolicyDataHandler) Delete(c *fiber.Ctx) error {
+    tenantID := c.Locals("tenant_id").(string)
+    namespace := c.Params("namespace")
+    key := c.Params("key")
+    
+    if err := h.policyService.DeletePolicyDataOverride(c.Context(), tenantID, namespace, key); err != nil {
+        return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+    }
+    
+    return c.Status(200).JSON(fiber.Map{"status": "deleted", "message": "Reverted to defaults"})
+}
+```
+
+### Default Policy Data Files
+
+```json
+// policies/data/hipaa/permitted_fields.json
+{
+  "physician": ["patient_id", "name", "diagnosis", "medications", "vitals", "lab_results"],
+  "nurse": ["patient_id", "name", "medications", "vitals", "care_plan"],
+  "billing": ["patient_id", "name", "insurance_id", "billing_codes"],
+  "researcher": ["patient_id_hashed", "age_range", "diagnosis", "outcomes"]
+}
+```
+
+```json
+// policies/data/pci_dss/cardholder_zones.json
+{
+  "allowed_zones": [
+    "secure-zone-1",
+    "payment-processing-zone",
+    "pci-compliant-datacenter"
+  ]
+}
+```
+
+### Usage Example
+
+```bash
+# View current HIPAA permitted fields (defaults + any overrides)
+curl -X GET http://localhost:18000/api/v1/policies/hipaa/permitted_fields \
+  -H "Authorization: Bearer $API_KEY"
+
+# Override for this tenant (nurses can now see lab_results)
+curl -X PUT http://localhost:18000/api/v1/policies/hipaa/permitted_fields \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "physician": ["patient_id", "name", "diagnosis", "medications", "vitals", "lab_results"],
+    "nurse": ["patient_id", "name", "medications", "vitals", "care_plan", "lab_results"],
+    "billing": ["patient_id", "name", "insurance_id", "billing_codes"],
+    "researcher": ["patient_id_hashed", "age_range", "diagnosis", "outcomes"]
+  }'
+
+# Reset to defaults
+curl -X DELETE http://localhost:18000/api/v1/policies/hipaa/permitted_fields \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+---
+
 ## Authentication & Credential Management
 
 ### Overview
@@ -1637,7 +2050,25 @@ Giru solves a critical UX problem: **MCP credential management hell**. Users typ
 | Audit logging | ✅ | ✅ | ❌ |
 | Cost | Free OSS | Pay per call | Free |
 
-**Strategy**: Vault for production, pgcrypto fallback for MVP/development.
+**Strategy**: Vault is the **default** for all deployments (including development). pgcrypto is available as a **fallback** for environments where Vault is not available.
+
+```yaml
+# Environment configuration
+GIRU_CREDENTIAL_STORE=vault      # Default: vault, fallback: pgcrypto
+
+# Vault configuration (required when GIRU_CREDENTIAL_STORE=vault)
+GIRU_VAULT_ADDR=http://vault:8200
+GIRU_VAULT_TOKEN=...             # Or use Kubernetes auth
+
+# pgcrypto fallback (only when GIRU_CREDENTIAL_STORE=pgcrypto)
+GIRU_PGCRYPTO_KEY=...            # Symmetric encryption key
+```
+
+**Why Vault as Default?**
+- Docker Compose includes Vault in dev mode (zero setup)
+- Consistent behavior between development and production
+- Developers learn Vault patterns early
+- pgcrypto fallback exists for edge cases (air-gapped, minimal deployments)
 
 ### Credential Flow Architecture
 
@@ -2610,6 +3041,99 @@ jobs:
 
 ---
 
+## Post-MVP Roadmap
+
+This section tracks improvements and optimizations to implement after MVP is stable and deployed. Items are prioritized based on user feedback and real usage data.
+
+### Performance Optimizations
+
+| Item | Priority | Trigger | Description |
+|------|----------|---------|-------------|
+| Connection pooling tuning | High | > 1K concurrent connections | Tune pgx pool settings based on actual load |
+| Query optimization | High | P99 > 10ms for any query | Add indexes, optimize slow queries identified in production |
+| Redis cluster mode | Medium | > 10K req/sec rate limiting | Migrate from single Redis to cluster for rate limiting |
+| gRPC for internal calls | Medium | Control plane latency | Replace HTTP between services with gRPC |
+| Response caching | Low | Read-heavy workloads | Cache tools/list responses per client |
+
+### Scalability Improvements
+
+| Item | Priority | Trigger | Description |
+|------|----------|---------|-------------|
+| Horizontal Pod Autoscaling tuning | High | Variable traffic | Tune HPA based on real metrics |
+| Database read replicas | Medium | > 5K read queries/sec | Add PostgreSQL read replicas |
+| Sharding strategy | Low | > 1M subscriptions | Plan for data partitioning |
+| Multi-region support | Low | Enterprise customers | Geographic distribution |
+
+### Operational Improvements
+
+| Item | Priority | Description |
+|------|----------|-------------|
+| Better error messages | High | Improve error context for debugging |
+| Structured logging improvements | High | Add correlation IDs, request tracing |
+| Health check granularity | Medium | Detailed health endpoints per component |
+| Chaos testing | Medium | Implement fault injection testing |
+| Runbook automation | Medium | Self-healing for common issues |
+| Cost monitoring | Low | Track infrastructure costs per tenant |
+
+### Developer Experience
+
+| Item | Priority | Description |
+|------|----------|-------------|
+| CLI autocomplete | High | Bash/Zsh completion for giru CLI |
+| Better validation errors | High | Actionable error messages for manifests |
+| Local policy testing | Medium | `giru policy test` command |
+| Mock MCP servers | Medium | Built-in mock servers for testing |
+| VS Code extension | Low | Syntax highlighting for Giru manifests |
+
+### Security Hardening
+
+| Item | Priority | Description |
+|------|----------|-------------|
+| Rate limit per IP | High | Add IP-based rate limiting (DDoS protection) |
+| API key rotation | High | Built-in key rotation workflow |
+| mTLS everywhere | Medium | Mutual TLS between all services |
+| Secret scanning | Medium | Prevent secrets in logs/responses |
+| Penetration testing | Low | Third-party security audit |
+
+### Caching Optimizations
+
+| Item | Priority | Description |
+|------|----------|-------------|
+| Policy data cache warming | Medium | Pre-warm cache on startup |
+| Subscription resolution cache | Medium | Cache client→tool→MCP resolution |
+| MCP server capabilities cache | Low | Cache initialize responses |
+| Negative cache | Low | Cache "subscription not found" to prevent repeated lookups |
+
+### Monitoring Enhancements
+
+| Item | Priority | Description |
+|------|----------|-------------|
+| Custom Grafana dashboards | High | Per-tenant usage, compliance violations |
+| Alerting rules | High | PagerDuty/Slack integration |
+| SLO tracking | Medium | Track against 99.9% availability target |
+| Cost per request | Medium | Calculate and track request costs |
+| Anomaly detection | Low | ML-based unusual pattern detection |
+
+### Feature Enhancements (Non-Enterprise)
+
+| Item | Priority | Description |
+|------|----------|-------------|
+| Webhook notifications | Medium | Notify on subscription events |
+| API versioning | Medium | Support /v2/ endpoints |
+| Batch operations | Low | Bulk create/update APIs |
+| GraphQL API | Low | Alternative to REST |
+
+### Documentation
+
+| Item | Priority | Description |
+|------|----------|-------------|
+| Video tutorials | High | Quick start, common use cases |
+| Architecture deep-dives | Medium | Blog posts on design decisions |
+| Troubleshooting guide | Medium | Common issues and solutions |
+| Performance tuning guide | Low | How to optimize for high throughput |
+
+---
+
 ## Success Metrics
 
 ### Technical Metrics
@@ -2692,20 +3216,6 @@ GIRU_LICENSE_KEY=...
 - OpenTelemetry for observability
 - Kubernetes CRDs for native integration
 - Plugin architecture for extensibility
-
----
-
-## Open Questions (To Be Clarified)
-
-<!-- These questions were identified during the scaffold review and need user clarification -->
-
-1. **Web UI Scope**: What features should be in the Community Web UI vs Enterprise Web UI? Currently both directories exist.
-
-2. **SDK Timeline**: Should SDK directory structure be included now as placeholders for Phase 5?
-
-3. **Vault vs pgcrypto**: Should MVP deployments support ONLY pgcrypto, or should Vault also be available from day 1?
-
-4. **Policy Data Location**: The `data/hipaa/*.json` files are referenced in policies but not shown in the directory structure. Should they live in `policies/data/` or separately?
 
 ---
 

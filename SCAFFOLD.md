@@ -498,7 +498,7 @@ func (r *RateLimiter) Check(subscriptionID string, limit int) bool {
     }
     
     // Add this request
-    r.redis.ZAdd(ctx, key, &redis.Z{Score: float64(now), Member: uuid.New()})
+    r.redis.ZAdd(ctx, key, &redis.Z{Score: float64(now), Member: ulid.Make().String()})
     r.redis.Expire(ctx, key, 2*time.Second)
     return true
 }
@@ -1205,14 +1205,16 @@ func (s *Server) setupUI() {
 -- +goose StatementBegin
 
 -- Enable extensions
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- Note: ULIDs are generated in application code using ulid.Make().String()
+-- ULIDs are stored as CHAR(26) - they are lexicographically sortable
 
 -- ============================================================================
 -- TENANTS
 -- ============================================================================
 CREATE TABLE tenants (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id CHAR(26) PRIMARY KEY,                       -- ULID generated in application
     name VARCHAR(255) NOT NULL UNIQUE,
     display_name VARCHAR(255) NOT NULL,
     status VARCHAR(50) NOT NULL DEFAULT 'active',  -- active, suspended, deleted
@@ -1231,8 +1233,8 @@ CREATE INDEX idx_tenants_name ON tenants(name) WHERE deleted_at IS NULL;
 -- ENVIRONMENTS
 -- ============================================================================
 CREATE TABLE environments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    id CHAR(26) PRIMARY KEY,                        -- ULID generated in application
+    tenant_id CHAR(26) NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name VARCHAR(50) NOT NULL,              -- dev, staging, prod
     display_name VARCHAR(255),
     config JSONB NOT NULL DEFAULT '{}',     -- environment-specific settings
@@ -1246,8 +1248,8 @@ CREATE INDEX idx_environments_tenant ON environments(tenant_id);
 -- CLIENTS (AI Agents / Applications)
 -- ============================================================================
 CREATE TABLE clients (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    id CHAR(26) PRIMARY KEY,                        -- ULID generated in application
+    tenant_id CHAR(26) NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     display_name VARCHAR(255),
     client_type VARCHAR(50) NOT NULL,       -- agent, application, user
@@ -1276,8 +1278,8 @@ CREATE INDEX idx_clients_api_key ON clients(api_key_hash);
 -- MCP SERVERS
 -- ============================================================================
 CREATE TABLE mcp_servers (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    id CHAR(26) PRIMARY KEY,                          -- ULID generated in application
+    tenant_id CHAR(26) NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     display_name VARCHAR(255),
     
@@ -1328,8 +1330,8 @@ CREATE INDEX idx_mcp_servers_token_expiry ON mcp_servers(token_expires_at)
 -- MCP TOOLS
 -- ============================================================================
 CREATE TABLE mcp_tools (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    mcp_server_id UUID NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
+    id CHAR(26) PRIMARY KEY,                          -- ULID generated in application
+    mcp_server_id CHAR(26) NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
     
     name VARCHAR(255) NOT NULL,              -- e.g., github__list_repos
     display_name VARCHAR(255),
@@ -1354,12 +1356,12 @@ CREATE INDEX idx_mcp_tools_server ON mcp_tools(mcp_server_id);
 -- SUBSCRIPTIONS (Access Grants: Client -> MCP Server)
 -- ============================================================================
 CREATE TABLE subscriptions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id CHAR(26) PRIMARY KEY,                        -- ULID generated in application
     
     -- The relationship
-    client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-    mcp_server_id UUID NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
-    environment_id UUID REFERENCES environments(id),
+    client_id CHAR(26) NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+    mcp_server_id CHAR(26) NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
+    environment_id CHAR(26) REFERENCES environments(id),
     
     name VARCHAR(255) NOT NULL,
     description TEXT,
@@ -1379,7 +1381,7 @@ CREATE TABLE subscriptions (
     -- Lifecycle
     status VARCHAR(50) NOT NULL DEFAULT 'active',  -- pending, active, suspended, expired
     requires_approval BOOLEAN DEFAULT false,        -- ENTERPRISE
-    approved_by UUID,                               -- ENTERPRISE
+    approved_by CHAR(26),                           -- ENTERPRISE
     approved_at TIMESTAMPTZ,                        -- ENTERPRISE
     
     -- Temporal validity
@@ -1401,11 +1403,11 @@ CREATE INDEX idx_subscriptions_status ON subscriptions(status, expires_at);
 -- SUBSCRIPTION USAGE (For quotas and billing)
 -- ============================================================================
 CREATE TABLE subscription_usage (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    subscription_id UUID NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+    id CHAR(26) PRIMARY KEY,                        -- ULID generated in application
+    subscription_id CHAR(26) NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
     
     tool_name VARCHAR(255) NOT NULL,
-    request_id UUID NOT NULL,
+    request_id CHAR(26) NOT NULL,
     
     duration_ms INTEGER,
     status_code INTEGER,
@@ -1422,9 +1424,9 @@ CREATE INDEX idx_usage_timestamp ON subscription_usage(timestamp DESC);
 -- OAUTH STATE (CSRF protection for OAuth flows)
 -- ============================================================================
 CREATE TABLE oauth_states (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id CHAR(26) PRIMARY KEY,                        -- ULID generated in application
     state_token VARCHAR(255) NOT NULL UNIQUE,
-    tenant_id UUID NOT NULL REFERENCES tenants(id),
+    tenant_id CHAR(26) NOT NULL REFERENCES tenants(id),
     provider VARCHAR(50) NOT NULL,
     redirect_uri TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1438,10 +1440,10 @@ CREATE INDEX idx_oauth_states_expires ON oauth_states(expires_at);
 -- CREDENTIAL AUDIT LOG
 -- ============================================================================
 CREATE TABLE credential_audit_log (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id),
-    mcp_server_id UUID REFERENCES mcp_servers(id) ON DELETE SET NULL,
-    client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+    id CHAR(26) PRIMARY KEY,                        -- ULID generated in application
+    tenant_id CHAR(26) NOT NULL REFERENCES tenants(id),
+    mcp_server_id CHAR(26) REFERENCES mcp_servers(id) ON DELETE SET NULL,
+    client_id CHAR(26) REFERENCES clients(id) ON DELETE SET NULL,
     
     operation VARCHAR(50) NOT NULL,          -- created, read, refreshed, revoked
     success BOOLEAN NOT NULL,
@@ -1460,15 +1462,15 @@ CREATE INDEX idx_credential_audit_timestamp ON credential_audit_log(created_at D
 -- AUDIT LOGS (ENTERPRISE)
 -- ============================================================================
 CREATE TABLE audit_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    id CHAR(26) PRIMARY KEY,                        -- ULID generated in application
+    tenant_id CHAR(26) NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     
     event_type VARCHAR(100) NOT NULL,
     actor_type VARCHAR(50) NOT NULL,         -- user, system, client
-    actor_id UUID,
+    actor_id CHAR(26),
     
     resource_type VARCHAR(100) NOT NULL,
-    resource_id UUID,
+    resource_id CHAR(26),
     action VARCHAR(100) NOT NULL,
     
     status VARCHAR(50) NOT NULL,             -- success, failure
@@ -1494,12 +1496,12 @@ CREATE TABLE audit_logs_y2025 PARTITION OF audit_logs
 
 -- Function to resolve which subscription allows access to a tool
 CREATE OR REPLACE FUNCTION resolve_tool_subscription(
-    p_client_id UUID,
+    p_client_id CHAR(26),
     p_tool_name VARCHAR,
     p_prefer_mcp_name VARCHAR DEFAULT NULL
 ) RETURNS TABLE (
-    subscription_id UUID,
-    mcp_server_id UUID,
+    subscription_id CHAR(26),
+    mcp_server_id CHAR(26),
     mcp_endpoint VARCHAR,
     mcp_auth_type VARCHAR,
     vault_secret_path VARCHAR,
@@ -1554,7 +1556,6 @@ DROP TABLE IF EXISTS clients;
 DROP TABLE IF EXISTS environments;
 DROP TABLE IF EXISTS tenants;
 DROP EXTENSION IF EXISTS "pgcrypto";
-DROP EXTENSION IF EXISTS "uuid-ossp";
 -- +goose StatementEnd
 ```
 
@@ -1753,14 +1754,14 @@ OPA policies reference external data (e.g., HIPAA permitted fields, PCI-DSS zone
 -- POLICY DATA OVERRIDES
 -- ============================================================================
 CREATE TABLE policy_data_overrides (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    id CHAR(26) PRIMARY KEY,                        -- ULID generated in application
+    tenant_id CHAR(26) NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     
     policy_namespace VARCHAR(100) NOT NULL,  -- 'hipaa', 'pci_dss', 'soc2'
     data_key VARCHAR(100) NOT NULL,          -- 'permitted_fields', 'cardholder_zones'
     data_value JSONB NOT NULL,               -- Customer's custom config
     
-    created_by UUID,                         -- User who created override
+    created_by CHAR(26),                     -- User who created override
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     

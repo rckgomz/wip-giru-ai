@@ -160,9 +160,20 @@ This section explains the fundamental concepts you need to understand before div
                     └───────────┘
 ```
 
-### The Three-Layer Architecture
+### The Four-Layer Architecture
 
 ```
+┌────────────────────────────────────────────────────────────────┐
+│                     Layer 4: Identity (Zitadel)                 │
+│  • OIDC/SAML identity provider                                 │
+│  • User authentication, SSO, MFA                               │
+│  • Organizations (map to Giru tenants)                         │
+│  • Session API for custom login UI                             │
+│  • Cloud-agnostic, self-hostable                               │
+└────────────────────────────────────────────────────────────────┘
+                              │
+                              │ JWT / OIDC tokens
+                              ▼
 ┌────────────────────────────────────────────────────────────────┐
 │                     Layer 3: Control Plane                      │
 │  • Go + Fiber HTTP framework                                   │
@@ -665,11 +676,13 @@ When multiple MCPs provide the same tool name:
 - Built-in reactivity (Runes in Svelte 5)
 - Great developer experience with fast HMR
 
-### Why Makefile over Taskfile?
-- **CNCF standard**: 100% of major Go CNCF projects use Makefile
-- **Zero installation**: Works out-of-the-box on all Unix systems
-- **CI/CD native**: Built-in support in GitHub Actions, GitLab CI
-- **40+ years**: Battle-tested, proven, mature ecosystem
+### Why Taskfile over Makefile?
+- **Better UX**: Human-readable YAML syntax, clearer error messages
+- **Cross-platform**: Works identically on macOS, Linux, Windows
+- **Modern features**: Built-in variables, includes, task dependencies
+- **No tab issues**: Avoids the notorious Makefile tab-vs-space problems
+- **Go-native**: Written in Go, aligns with our tech stack
+- **Note**: While many CNCF projects use Makefile, Taskfile provides a better developer experience for new projects
 
 ### Why Goose + sqlc for Database?
 | Tool | Purpose | Why |
@@ -686,6 +699,18 @@ When multiple MCPs provide the same tool name:
 - Full audit logging (SOC2/HIPAA compliant)
 - Free open source version
 
+### Why Zitadel for Identity?
+- **Go-native**: Same language as control plane, easier ops
+- **Lighter footprint**: ~256MB RAM vs Keycloak's ~512MB-1GB
+- **Session API**: Build custom login UI (no redirect-based flows required)
+- **Management API**: Full CRUD for users/orgs from Giru Admin UI
+- **Organizations**: Native multi-tenancy maps to Giru tenants
+- **Cloud-agnostic**: Single binary, runs anywhere (SaaS or self-hosted)
+- **Modern**: Kubernetes-native, CRDs support, fast startup
+- **Compliance**: Built-in audit logs for SOC2/HIPAA
+- **Federation**: Easy SSO with Okta, Azure AD, Google Workspace
+- **Note**: See "Authentication & Credential Management" section for full architecture
+
 ### Why No SDKs (Initially)?
 - **Infrastructure, not SaaS**: Like Kubernetes, users interact via CLI and manifests
 - **CLI covers 95%**: `giru server create`, `giru policy apply`
@@ -699,15 +724,7 @@ When multiple MCPs provide the same tool name:
 
 Giru is designed with **swappable infrastructure providers** to support diverse enterprise requirements. The open source edition ships with Envoy and OPA as defaults, while enterprise customers can swap in alternative proxies (Kong, NGINX) or policy engines (Cedar, SpiceDB/Zanzibar).
 
-### Why Swappable Providers?
-
-| Reason | Benefit |
-|--------|---------|
-| **Enterprise requirements** | Customers may already have Kong/NGINX investments |
-| **Vendor neutrality** | Avoid lock-in, increase adoption |
-| **Future-proofing** | New proxies/engines can be added without core changes |
-| **Managed SaaS flexibility** | We control the stack; self-hosters choose theirs |
-| **Envoy AI Gateway convergence** | As Envoy adds native MCP support, we leverage it |
+> **Note**: See [Why Swappable Providers?](#why-swappable-providers) in the Technical Decisions section for the full rationale.
 
 ### Architecture Overview
 
@@ -1354,6 +1371,8 @@ func (p *AIGatewayProvider) ConfigureMCPRouting(ctx context.Context) error {
 
 ## Directory Structure to Create
 
+> **Reading Guide**: This section shows the complete file/folder structure. Detailed implementation for each component (Database Strategy, Policy Data Management, Authentication, Compliance Policies, etc.) follows in subsequent sections.
+
 ### Repository 1: giru-ai/giru (Open Source - Apache 2.0)
 
 This is the CNCF project repository with production-ready core features.
@@ -1370,7 +1389,7 @@ giru/
 ├── .gitignore
 ├── go.mod                           # Go module (root)
 ├── go.sum
-├── Makefile                         # Build automation
+├── Taskfile.yml                     # Build automation (task runner)
 │
 ├── .github/
 │   ├── workflows/
@@ -1610,7 +1629,7 @@ giru-enterprise/
 ├── README.md
 ├── go.mod                           # Imports github.com/giru-ai/giru
 ├── go.sum
-├── Makefile
+├── Taskfile.yml
 │
 ├── cmd/
 │   └── giru-enterprise/
@@ -1902,7 +1921,7 @@ func (s *Server) setupUI() {
 │  Driver:      pgx v5                    │
 │  Queries:     sqlc (type-safe codegen)  │
 │  Migrations:  goose (imperative SQL)    │
-│  Seeds:       SQL files + Makefile      │
+│  Seeds:       SQL files + Taskfile      │
 │  Database:    PostgreSQL 15+            │
 │  Cache:       Redis 7+                  │
 └─────────────────────────────────────────┘
@@ -2386,46 +2405,59 @@ func (db *DB) Close() {
 }
 ```
 
-### Makefile Targets for Database
+### Taskfile Targets for Database
 
-```makefile
-# Database targets
-DATABASE_URL ?= postgresql://postgres:password@localhost:5432/giru
+```yaml
+# Taskfile.yml - Database tasks
+version: '3'
 
-.PHONY: db-migrate
-db-migrate: ## Run database migrations
-	goose -dir db/migrations postgres "$(DATABASE_URL)" up
+vars:
+  DATABASE_URL: '{{.DATABASE_URL | default "postgresql://postgres:password@localhost:5432/giru"}}'
 
-.PHONY: db-migrate-down
-db-migrate-down: ## Rollback last migration
-	goose -dir db/migrations postgres "$(DATABASE_URL)" down
+tasks:
+  db:migrate:
+    desc: Run database migrations
+    cmds:
+      - goose -dir db/migrations postgres "{{.DATABASE_URL}}" up
 
-.PHONY: db-migrate-status
-db-migrate-status: ## Show migration status
-	goose -dir db/migrations postgres "$(DATABASE_URL)" status
+  db:migrate:down:
+    desc: Rollback last migration
+    cmds:
+      - goose -dir db/migrations postgres "{{.DATABASE_URL}}" down
 
-.PHONY: db-migrate-create
-db-migrate-create: ## Create new migration (NAME=migration_name)
-	@if [ -z "$(NAME)" ]; then echo "Usage: make db-migrate-create NAME=name"; exit 1; fi
-	goose -dir db/migrations create $(NAME) sql
+  db:migrate:status:
+    desc: Show migration status
+    cmds:
+      - goose -dir db/migrations postgres "{{.DATABASE_URL}}" status
 
-.PHONY: db-seed
-db-seed: ## Load seed data
-	@for f in db/seeds/*.sql; do psql "$(DATABASE_URL)" -f $$f; done
+  db:migrate:create:
+    desc: Create new migration
+    cmds:
+      - goose -dir db/migrations create {{.NAME}} sql
+    requires:
+      vars: [NAME]
 
-.PHONY: db-reset
-db-reset: ## Reset database (migrate down, up, seed)
-	goose -dir db/migrations postgres "$(DATABASE_URL)" reset
-	$(MAKE) db-migrate
-	$(MAKE) db-seed
+  db:seed:
+    desc: Load seed data
+    cmds:
+      - for f in db/seeds/*.sql; do psql "{{.DATABASE_URL}}" -f $f; done
 
-.PHONY: sqlc-generate
-sqlc-generate: ## Generate Go code from SQL
-	cd db && sqlc generate
+  db:reset:
+    desc: Reset database (migrate down, up, seed)
+    cmds:
+      - goose -dir db/migrations postgres "{{.DATABASE_URL}}" reset
+      - task: db:migrate
+      - task: db:seed
 
-.PHONY: db-console
-db-console: ## Open psql console
-	psql "$(DATABASE_URL)"
+  db:sqlc:
+    desc: Generate Go code from SQL
+    cmds:
+      - cd db && sqlc generate
+
+  db:console:
+    desc: Open psql console
+    cmds:
+      - psql "{{.DATABASE_URL}}"
 ```
 
 ---
@@ -2733,16 +2765,17 @@ Giru solves a critical UX problem: **MCP credential management hell**. Users typ
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ Layer 1: User → Giru Gateway                                    │
+│ Layer 1: User → Giru Gateway (Zitadel)                          │
 │ Purpose: Authenticate WHO is using the platform                 │
-│ Methods: API Keys (Open Core), SSO (Enterprise)                │
+│ Methods: OIDC/SAML via Zitadel (SSO, MFA, Social Login)        │
+│ Provider: Zitadel (self-hosted, cloud-agnostic)                │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ Layer 2: Client (AI Agent) → Giru Gateway                       │
 │ Purpose: Authenticate WHICH agent is making requests            │
-│ Methods: API Keys, OAuth 2.1 Client Credentials                │
+│ Methods: API Keys, OAuth 2.1 Client Credentials (via Zitadel)  │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -2752,6 +2785,100 @@ Giru solves a critical UX problem: **MCP credential management hell**. Users typ
 │ Reality: Every MCP has different auth (OAuth, API keys, etc)   │
 │ Solution: Giru stores credentials in HashiCorp Vault           │
 └─────────────────────────────────────────────────────────────────┘
+```
+
+### Why Zitadel for Identity?
+
+| Factor | Zitadel | Keycloak | Custom Auth |
+|--------|---------|----------|-------------|
+| Language | Go (matches stack) | Java | Go |
+| RAM usage | ~256MB | ~512MB-1GB | Minimal |
+| Custom login UI | Session API | Redirect only | Full control |
+| SSO (OIDC/SAML) | Built-in | Built-in | Build it |
+| MFA | Built-in | Built-in | Build it |
+| Multi-tenancy | Organizations | Realms | Build it |
+| Self-hosted | Single binary | Complex | N/A |
+| Cloud-agnostic | Yes | Yes | Yes |
+| Audit logs | Built-in | Built-in | Build it |
+| Time to implement | ~3-5 days | ~5-7 days | ~2-3 weeks |
+
+**Decision**: Use Zitadel from day 1 for both Managed SaaS and Enterprise self-hosted deployments.
+
+**Key Advantages**:
+- **Session API**: Build custom login UI within Giru Admin (no redirects)
+- **Management API**: Full user/org CRUD from Giru's Svelte UI
+- **Organizations**: Map directly to Giru tenants
+- **Go-native**: Aligns with control plane stack
+- **Cloud-agnostic**: Same deployment for SaaS and self-hosted
+
+```yaml
+# Zitadel configuration
+GIRU_AUTH_PROVIDER=zitadel
+GIRU_ZITADEL_ISSUER=https://auth.giru.dev
+GIRU_ZITADEL_PROJECT_ID=giru-gateway
+GIRU_ZITADEL_CLIENT_ID=...
+GIRU_ZITADEL_CLIENT_SECRET=...
+```
+
+### Zitadel Integration Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  Giru Admin UI (Svelte)                         │
+│  • Custom login form (Session API - no redirects)              │
+│  • User management (Management API)                            │
+│  • Organization/tenant provisioning                            │
+│  • MFA enrollment                                              │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+              ┌───────────────┼───────────────┐
+              ▼               ▼               ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│  Session API    │ │ Management API  │ │   Auth API      │
+│  /v2/sessions   │ │ /management/v1  │ │   /auth/v1      │
+│  Custom login   │ │ CRUD users/orgs │ │ Current user    │
+└─────────────────┘ └─────────────────┘ └─────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     Zitadel Instance                            │
+│  • Organizations → Giru tenants                                │
+│  • Projects → Giru application                                 │
+│  • Users → Human + Machine (service accounts)                  │
+│  • Identity Providers → Okta, Azure AD, Google (federation)    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Tenant ↔ Zitadel Organization Mapping
+
+```go
+// On user login, extract tenant from Zitadel token claims
+func extractTenantFromToken(claims jwt.MapClaims) string {
+    if orgID, ok := claims["urn:zitadel:iam:org:id"].(string); ok {
+        return orgID
+    }
+    return ""
+}
+
+// When creating a Giru tenant, create matching Zitadel organization
+func (s *TenantService) Create(ctx context.Context, tenant *Tenant) error {
+    // 1. Create in Giru database
+    if err := s.db.CreateTenant(ctx, tenant); err != nil {
+        return err
+    }
+    
+    // 2. Create matching Zitadel organization
+    org, err := s.zitadel.CreateOrganization(ctx, &mgmt.AddOrgRequest{
+        Name: tenant.Name,
+    })
+    if err != nil {
+        return fmt.Errorf("create zitadel org: %w", err)
+    }
+    
+    // 3. Store Zitadel org ID reference
+    tenant.ZitadelOrgID = org.Id
+    return s.db.UpdateTenant(ctx, tenant)
+}
 ```
 
 ### Why HashiCorp Vault?
@@ -3217,12 +3344,13 @@ test_allow_appropriate_request {
 
 | Layer | Technology | Purpose | Swappable? |
 |-------|------------|---------|------------|
+| Identity | Zitadel | Authentication, SSO, MFA, user management | ❌ Core component |
 | Proxy | Envoy 1.28+ (default) | High-performance routing, TLS, rate limiting | ✅ Enterprise: Kong, NGINX |
 | Policy | OPA (default) | Authorization, compliance, parameter validation | ✅ Enterprise: Cedar, SpiceDB |
 | Control Plane | Go 1.21+ / Fiber | REST API, xDS server, business logic | ❌ Core component |
 | Database | PostgreSQL 15+ | Configuration, audit logs | ❌ Core component |
 | Cache | Redis 7+ | Rate limiting, sessions | ❌ Core component |
-| UI | Svelte 5 / SvelteKit 2 | Admin dashboard (Enterprise) | ❌ Core component |
+| UI | Svelte 5 / SvelteKit 2 | Admin dashboard | ❌ Core component |
 | Credentials | HashiCorp Vault | Secret storage, rotation | ❌ Core component |
 
 ### Feature Matrix: Open Source vs Enterprise
@@ -3252,9 +3380,14 @@ test_allow_appropriate_request {
 | AWS Cedar | ❌ | ✅ |
 | SpiceDB (Zanzibar) | ❌ | ✅ |
 | Custom policy adapters | ❌ | ✅ |
-| **Authentication** | | |
-| SSO (SAML/OIDC) | ❌ | ✅ |
-| MFA | ❌ | ✅ |
+| **Identity (Zitadel)** | | |
+| Zitadel integration | ✅ | ✅ |
+| OIDC authentication | ✅ | ✅ |
+| Custom login UI (Session API) | ✅ | ✅ |
+| SSO federation (SAML/OIDC) | ❌ | ✅ |
+| MFA (TOTP, WebAuthn) | ❌ | ✅ |
+| Social login (GitHub, Google) | ❌ | ✅ |
+| Identity provider management | ❌ | ✅ |
 | **Enterprise Features** | | |
 | Multi-tenancy | ❌ | ✅ |
 | Enhanced audit logs | ❌ | ✅ |
@@ -3264,6 +3397,99 @@ test_allow_appropriate_request {
 | Usage-based billing | ❌ | ✅ |
 | 24/7 support | ❌ | ✅ |
 
+### Enterprise Feature Protection (CRITICAL)
+
+**Enterprise features MUST NOT exist in the open-source repository.**
+
+If enterprise code exists in the OSS repo (even behind feature flags), anyone can clone, remove the check, and rebuild. The only reliable protection is **code separation**.
+
+#### Code Separation Strategy
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     giru (Open Source)                          │
+│  • Basic Zitadel OIDC authentication                           │
+│  • Username/password login via Session API                     │
+│  • User profile management                                     │
+│  • NO SSO, MFA, Social login code - IT DOES NOT EXIST          │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ imported by
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                  giru-enterprise (Private)                      │
+│  • Imports all OSS functionality                               │
+│  • ADDS: SSO federation service                                │
+│  • ADDS: MFA enforcement service                               │
+│  • ADDS: Social provider management                            │
+│  • ADDS: IdP configuration UI components                       │
+│  • License validation (signed JWT + optional phone-home)       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### What Goes Where
+
+| Feature | `giru` (OSS) | `giru-enterprise` (Private) |
+|---------|--------------|----------------------------|
+| Basic Zitadel OIDC | ✅ Code here | Imports from OSS |
+| Username/password login | ✅ Code here | Imports from OSS |
+| Session API integration | ✅ Code here | Imports from OSS |
+| User profile management | ✅ Code here | Imports from OSS |
+| SSO federation (SAML/OIDC) | ❌ **Not present** | ✅ Code here |
+| MFA enforcement | ❌ **Not present** | ✅ Code here |
+| Social login providers | ❌ **Not present** | ✅ Code here |
+| IdP management UI | ❌ **Not present** | ✅ Code here |
+| Multi-tenancy | ❌ **Not present** | ✅ Code here |
+| Advanced compliance | ❌ **Not present** | ✅ Code here |
+| Approval workflows | ❌ **Not present** | ✅ Code here |
+
+#### Interface Extension Pattern
+
+```go
+// giru/internal/auth/provider.go (Open Source)
+package auth
+
+// Provider - basic auth interface available to all
+type Provider interface {
+    Authenticate(ctx context.Context, creds Credentials) (*Session, error)
+    ValidateToken(ctx context.Context, token string) (*Claims, error)
+    RefreshToken(ctx context.Context, refreshToken string) (*TokenPair, error)
+    Logout(ctx context.Context, sessionID string) error
+    GetUser(ctx context.Context, userID string) (*User, error)
+    UpdateUser(ctx context.Context, user *User) error
+}
+```
+
+```go
+// giru-enterprise/internal/auth/enterprise.go (Private)
+package auth
+
+import "github.com/giru-ai/giru/internal/auth"
+
+// EnterpriseProvider extends base with paid features
+type EnterpriseProvider interface {
+    auth.Provider // Embed OSS interface
+    
+    // SSO - Enterprise only
+    ConfigureSSO(ctx context.Context, config *SSOConfig) error
+    ListIdentityProviders(ctx context.Context) ([]*IdentityProvider, error)
+    
+    // MFA - Enterprise only  
+    EnforceMFA(ctx context.Context, orgID string, policy *MFAPolicy) error
+    
+    // Social Login - Enterprise only
+    AddSocialProvider(ctx context.Context, provider *SocialProvider) error
+}
+```
+
+#### Protection by Deployment Model
+
+| Deployment | Protection Level | How |
+|------------|------------------|-----|
+| **Managed SaaS** | Unbypassable | Features gated by billing system; customers don't have code |
+| **Enterprise Self-Hosted** | Strong | Private binary + license validation + legal agreement |
+| **Community Self-Hosted** | Absolute | Enterprise code doesn't exist in the OSS binary |
+
 ### License Management (Enterprise)
 
 ```go
@@ -3271,40 +3497,38 @@ test_allow_appropriate_request {
 package license
 
 type License struct {
-    CustomerID   string
-    Features     []string
-    ExpiresAt    time.Time
-    MaxTenants   int
-    MaxServers   int
-    Support      string // standard, premium, enterprise
+    CustomerID   string    `json:"customer_id"`
+    Features     []string  `json:"features"`
+    ExpiresAt    time.Time `json:"expires_at"`
+    MaxTenants   int       `json:"max_tenants"`
+    MaxServers   int       `json:"max_servers"`
+    Signature    string    `json:"signature"` // RSA signature
 }
 
-func (m *Manager) Validate() (*License, error) {
-    // Load from file or environment
-    licenseData, err := loadLicense()
-    if err != nil {
-        return nil, fmt.Errorf("no valid license found")
+func (v *Validator) Validate(lic *License) error {
+    // 1. Verify RSA signature (works offline)
+    if err := v.verifySignature(lic); err != nil {
+        return ErrInvalidLicense
     }
     
-    // Verify RSA signature
-    if err := m.verifySignature(licenseData); err != nil {
-        return nil, fmt.Errorf("invalid license signature")
-    }
-    
-    lic, _ := parseLicense(licenseData)
+    // 2. Check expiration
     if time.Now().After(lic.ExpiresAt) {
-        return nil, fmt.Errorf("license expired")
+        return ErrLicenseExpired
     }
     
-    return lic, nil
+    // 3. Optional phone-home (for revocation, usage tracking)
+    if v.apiURL != "" {
+        _ = v.validateOnline(lic) // Don't fail if offline
+    }
+    
+    return nil
 }
 
-func (m *Manager) HasFeature(feature string) bool {
-    lic, _ := m.Validate()
-    if lic == nil {
-        return false
+func (l *License) RequireFeature(feature string) error {
+    if !slices.Contains(l.Features, feature) {
+        return fmt.Errorf("feature %q not licensed", feature)
     }
-    return slices.Contains(lic.Features, feature)
+    return nil
 }
 ```
 
@@ -3432,6 +3656,34 @@ services:
     networks:
       - giru
 
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:latest
+    command: start-from-init --masterkey "MasterkeyNeedsToHave32Characters" --tlsMode disabled
+    environment:
+      - ZITADEL_DATABASE_POSTGRES_HOST=postgres
+      - ZITADEL_DATABASE_POSTGRES_PORT=5432
+      - ZITADEL_DATABASE_POSTGRES_DATABASE=zitadel
+      - ZITADEL_DATABASE_POSTGRES_USER=postgres
+      - ZITADEL_DATABASE_POSTGRES_PASSWORD=password
+      - ZITADEL_DATABASE_POSTGRES_ADMIN_EXISTINGDATABASE=postgres
+      - ZITADEL_EXTERNALSECURE=false
+      - ZITADEL_EXTERNALDOMAIN=localhost
+      - ZITADEL_EXTERNALPORT=8085
+      - ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME=admin@giru.dev
+      - ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD=Admin123!
+    ports:
+      - "8085:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - giru
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/debug/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres-data:
   redis-data:
@@ -3496,49 +3748,62 @@ portForward:
 
 ### Development Commands
 
-```makefile
-# Development targets
+```yaml
+# Taskfile.yml - Development tasks
+version: '3'
 
-.PHONY: dev-setup
-dev-setup: deps ## One-time development setup
-	./scripts/setup/install-dev.sh
-	$(MAKE) dev-up
-	$(MAKE) db-migrate
-	$(MAKE) db-seed
+tasks:
+  dev:setup:
+    desc: One-time development setup
+    cmds:
+      - ./scripts/setup/install-dev.sh
+      - task: dev:up
+      - task: db:migrate
+      - task: db:seed
 
-.PHONY: dev-up
-dev-up: ## Start Docker Compose environment
-	docker-compose -f deployments/docker-compose/docker-compose.dev.yml up -d
-	@echo "Gateway:     http://localhost:8080"
-	@echo "API:         http://localhost:18000"
-	@echo "Envoy Admin: http://localhost:9901"
-	@echo "OPA:         http://localhost:8181"
-	@echo "Prometheus:  http://localhost:9090"
-	@echo "Grafana:     http://localhost:3000"
+  dev:
+    desc: Start full development environment
+    cmds:
+      - docker-compose -f deployments/docker-compose/docker-compose.dev.yml up -d
+      - echo "Gateway:     http://localhost:8080"
+      - echo "API:         http://localhost:18000"
+      - echo "Envoy Admin: http://localhost:9901"
+      - echo "OPA:         http://localhost:8181"
+      - echo "Prometheus:  http://localhost:9090"
+      - echo "Grafana:     http://localhost:3000"
 
-.PHONY: dev-down
-dev-down: ## Stop Docker Compose environment
-	docker-compose -f deployments/docker-compose/docker-compose.dev.yml down
+  dev:down:
+    desc: Stop Docker Compose environment
+    cmds:
+      - docker-compose -f deployments/docker-compose/docker-compose.dev.yml down
 
-.PHONY: dev-logs
-dev-logs: ## Tail logs from all services
-	docker-compose -f deployments/docker-compose/docker-compose.dev.yml logs -f
+  dev:logs:
+    desc: Tail logs from all services
+    cmds:
+      - docker-compose -f deployments/docker-compose/docker-compose.dev.yml logs -f
 
-.PHONY: dev-restart
-dev-restart: dev-down dev-up ## Restart environment
+  dev:restart:
+    desc: Restart environment
+    cmds:
+      - task: dev:down
+      - task: dev
 
-# kind + Skaffold
-.PHONY: kind-create
-kind-create: ## Create kind cluster
-	kind create cluster --config deployments/kind/kind-config.yaml
+  # kind + Skaffold
+  kind:create:
+    desc: Create kind cluster
+    cmds:
+      - kind create cluster --config deployments/kind/kind-config.yaml
 
-.PHONY: kind-delete
-kind-delete: ## Delete kind cluster
-	kind delete cluster --name giru-dev
+  kind:delete:
+    desc: Delete kind cluster
+    cmds:
+      - kind delete cluster --name giru-dev
 
-.PHONY: skaffold-dev
-skaffold-dev: ## Run Skaffold in dev mode
-	cd deployments/kind && skaffold dev
+  skaffold:dev:
+    desc: Run Skaffold in dev mode
+    dir: deployments/kind
+    cmds:
+      - skaffold dev
 ```
 
 ### Hot Reload Configuration
@@ -3615,11 +3880,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.21'
+      - name: Install Task
+        uses: arduino/setup-task@v2
       - name: Run tests
         env:
           DATABASE_URL: postgresql://postgres:test@localhost:5432/giru_test
           REDIS_URL: redis://localhost:6379
-        run: make test-go
+        run: task test:go
 
   test-policies:
     runs-on: ubuntu-latest
@@ -3627,8 +3894,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Setup OPA
         uses: open-policy-agent/setup-opa@v2
+      - name: Install Task
+        uses: arduino/setup-task@v2
       - name: Test policies
-        run: make test-policies
+        run: task policy:test
 
   build:
     runs-on: ubuntu-latest
@@ -3638,10 +3907,12 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.21'
+      - name: Install Task
+        uses: arduino/setup-task@v2
       - name: Build
-        run: make build
+        run: task build
       - name: Build Docker images
-        run: make docker-build
+        run: task docker:build
 ```
 
 ### GitHub Actions: Release
@@ -3664,15 +3935,18 @@ jobs:
         with:
           go-version: '1.21'
       
+      - name: Install Task
+        uses: arduino/setup-task@v2
+      
       - name: Build binaries
         run: |
-          GOOS=linux GOARCH=amd64 make build
-          GOOS=darwin GOARCH=arm64 make build
+          GOOS=linux GOARCH=amd64 task build
+          GOOS=darwin GOARCH=arm64 task build
       
       - name: Build and push Docker images
         run: |
           echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
-          make docker-build docker-push
+          task docker:build docker:push
       
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

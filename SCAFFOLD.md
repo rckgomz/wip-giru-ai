@@ -606,19 +606,30 @@ When multiple MCPs provide the same tool name:
 
 ## Technical Decisions and Rationale
 
-### Why Envoy?
+### Why Envoy? (Default Proxy Provider)
 - Battle-tested at Netflix, Lyft, AWS
 - 3-10x faster than Go stdlib HTTP
 - Dynamic configuration via xDS protocol
 - Service mesh compatibility (Istio)
 - Industry standard for API gateways
+- **Envoy AI Gateway**: Native MCP support coming (Oct 2025), allows Giru to offload protocol handling
+- **Note**: Envoy is the default; Enterprise supports Kong, NGINX (see Provider Abstraction Architecture)
 
-### Why OPA?
+### Why OPA? (Default Policy Engine)
 - CNCF graduated project (trusted)
 - Declarative Rego policies (readable by compliance teams)
 - Testable (unit tests for policies)
 - Version controlled (GitOps native)
 - Used by Goldman Sachs, Netflix, Atlassian
+- **Note**: OPA is the default; Enterprise supports Cedar, SpiceDB (see Provider Abstraction Architecture)
+
+### Why Swappable Providers?
+- **Enterprise reality**: Customers have existing investments in Kong, NGINX, or other proxies
+- **Policy diversity**: Some prefer Cedar (AWS) or SpiceDB (Zanzibar) over OPA
+- **Vendor neutrality**: Avoid lock-in, increase adoption across different infrastructure stacks
+- **Future-proofing**: New proxies/engines can be added without core architecture changes
+- **Managed vs Self-Hosted**: We control the stack for SaaS; enterprise customers choose theirs
+- **Clean architecture**: Provider interfaces ensure consistent behavior regardless of implementation
 
 ### Why Go for Control Plane?
 - Performance (compiled, concurrent)
@@ -684,6 +695,663 @@ When multiple MCPs provide the same tool name:
 
 ---
 
+## Provider Abstraction Architecture
+
+Giru is designed with **swappable infrastructure providers** to support diverse enterprise requirements. The open source edition ships with Envoy and OPA as defaults, while enterprise customers can swap in alternative proxies (Kong, NGINX) or policy engines (Cedar, SpiceDB/Zanzibar).
+
+### Why Swappable Providers?
+
+| Reason | Benefit |
+|--------|---------|
+| **Enterprise requirements** | Customers may already have Kong/NGINX investments |
+| **Vendor neutrality** | Avoid lock-in, increase adoption |
+| **Future-proofing** | New proxies/engines can be added without core changes |
+| **Managed SaaS flexibility** | We control the stack; self-hosters choose theirs |
+| **Envoy AI Gateway convergence** | As Envoy adds native MCP support, we leverage it |
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     GIRU CONTROL PLANE                          │
+│  Multi-tenancy │ Subscriptions │ Compliance │ Billing │ UI     │
+├─────────────────────────────────────────────────────────────────┤
+│                   PROVIDER ABSTRACTION LAYER                    │
+│                                                                 │
+│  ┌─────────────────────┐       ┌─────────────────────┐         │
+│  │   ProxyProvider     │       │   PolicyEngine      │         │
+│  │   Interface         │       │   Interface         │         │
+│  └─────────┬───────────┘       └─────────┬───────────┘         │
+│            │                             │                      │
+│  ┌─────────┴───────────┐       ┌─────────┴───────────┐         │
+│  │ Implementations:    │       │ Implementations:    │         │
+│  │ • Envoy (default)   │       │ • OPA (default)     │         │
+│  │ • Kong (enterprise) │       │ • Cedar (enterprise)│         │
+│  │ • NGINX (enterprise)│       │ • SpiceDB (ent.)    │         │
+│  └─────────────────────┘       └─────────────────────┘         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Proxy Provider Interface
+
+```go
+// internal/proxy/provider.go
+package proxy
+
+import "context"
+
+// Provider abstracts the proxy layer (Envoy, Kong, NGINX, etc.)
+// Open source ships with Envoy; enterprise supports alternatives.
+type Provider interface {
+    // Name returns the provider identifier (e.g., "envoy", "kong")
+    Name() string
+    
+    // --- Route Management ---
+    // UpdateRoutes pushes route configuration to the proxy
+    UpdateRoutes(ctx context.Context, routes []Route) error
+    
+    // DeleteRoute removes a route from the proxy
+    DeleteRoute(ctx context.Context, routeID string) error
+    
+    // --- Rate Limiting ---
+    // UpdateRateLimits configures rate limit rules
+    UpdateRateLimits(ctx context.Context, limits []RateLimit) error
+    
+    // --- Upstream Management ---
+    // RegisterUpstream adds an MCP server as a backend
+    RegisterUpstream(ctx context.Context, upstream Upstream) error
+    
+    // DeregisterUpstream removes an MCP server backend
+    DeregisterUpstream(ctx context.Context, upstreamID string) error
+    
+    // --- Health & Observability ---
+    // HealthCheck verifies proxy connectivity
+    HealthCheck(ctx context.Context) error
+    
+    // GetMetrics retrieves proxy metrics (connections, latency, etc.)
+    GetMetrics(ctx context.Context) (*Metrics, error)
+    
+    // --- Lifecycle ---
+    // Start initializes the provider (e.g., start xDS server for Envoy)
+    Start(ctx context.Context) error
+    
+    // Stop gracefully shuts down the provider
+    Stop(ctx context.Context) error
+}
+
+// Route represents a routing rule from client to MCP server
+type Route struct {
+    ID           string            // ULID
+    TenantID     string            // Multi-tenant isolation
+    ClientID     string            // Source client
+    MCPServerID  string            // Destination MCP server
+    PathPrefix   string            // e.g., "/mcp/github"
+    Headers      map[string]string // Header matching
+    Priority     int               // Route precedence
+    Metadata     map[string]string // Provider-specific config
+}
+
+// RateLimit represents a rate limiting rule
+type RateLimit struct {
+    ID          string
+    TenantID    string
+    ClientID    string   // Empty = tenant-wide
+    MCPServerID string   // Empty = all servers
+    Requests    int      // Requests per window
+    Window      Duration // Time window (e.g., 1m, 1h)
+    BurstSize   int      // Token bucket burst
+}
+
+// Upstream represents an MCP server backend
+type Upstream struct {
+    ID           string
+    TenantID     string
+    Name         string
+    Address      string            // host:port or URL
+    Protocol     string            // "http", "grpc", "stdio"
+    TLSEnabled   bool
+    HealthPath   string            // Health check endpoint
+    Metadata     map[string]string // Provider-specific config
+}
+
+// Metrics contains proxy telemetry
+type Metrics struct {
+    ActiveConnections int64
+    RequestsTotal     int64
+    RequestsPerSecond float64
+    LatencyP50        time.Duration
+    LatencyP99        time.Duration
+    ErrorRate         float64
+    UpstreamHealth    map[string]bool // upstreamID -> healthy
+}
+```
+
+### Policy Engine Interface
+
+```go
+// internal/policy/engine.go
+package policy
+
+import "context"
+
+// Engine abstracts the policy decision layer (OPA, Cedar, SpiceDB, etc.)
+// Open source ships with OPA; enterprise supports alternatives.
+type Engine interface {
+    // Name returns the engine identifier (e.g., "opa", "cedar")
+    Name() string
+    
+    // --- Policy Evaluation ---
+    // Evaluate makes an authorization decision
+    Evaluate(ctx context.Context, input *EvaluationInput) (*EvaluationResult, error)
+    
+    // EvaluateBatch evaluates multiple requests (for preflight checks)
+    EvaluateBatch(ctx context.Context, inputs []*EvaluationInput) ([]*EvaluationResult, error)
+    
+    // --- Policy Management ---
+    // LoadPolicies loads/reloads policy definitions
+    LoadPolicies(ctx context.Context, policies []PolicyDefinition) error
+    
+    // LoadPolicyData loads/reloads policy data (e.g., role mappings)
+    LoadPolicyData(ctx context.Context, data map[string]any) error
+    
+    // --- Compliance ---
+    // ValidateCompliance checks if a request meets compliance requirements
+    ValidateCompliance(ctx context.Context, input *ComplianceInput) (*ComplianceResult, error)
+    
+    // --- Audit ---
+    // GetAuditLog retrieves policy decision audit entries
+    GetAuditLog(ctx context.Context, filter AuditFilter) ([]AuditEntry, error)
+    
+    // --- Lifecycle ---
+    // Start initializes the engine
+    Start(ctx context.Context) error
+    
+    // Stop gracefully shuts down the engine
+    Stop(ctx context.Context) error
+}
+
+// EvaluationInput contains all context for a policy decision
+type EvaluationInput struct {
+    TenantID      string            // Multi-tenant context
+    ClientID      string            // Requesting client
+    MCPServerID   string            // Target MCP server
+    ToolName      string            // MCP tool being called
+    Action        string            // "tools/call", "resources/read", etc.
+    Parameters    map[string]any    // Tool parameters
+    UserContext   *UserContext      // User info (from JWT/API key)
+    RequestID     string            // For correlation
+    Timestamp     time.Time
+}
+
+// UserContext contains authenticated user information
+type UserContext struct {
+    UserID      string
+    Email       string
+    Roles       []string
+    Groups      []string
+    Attributes  map[string]string // Custom claims
+}
+
+// EvaluationResult contains the policy decision
+type EvaluationResult struct {
+    Allowed       bool
+    Reason        string            // Human-readable explanation
+    Violations    []Violation       // Specific policy violations
+    FilteredParams map[string]any   // Parameters after PII filtering
+    AuditEntry    *AuditEntry       // For logging
+    Latency       time.Duration     // Decision time
+}
+
+// Violation represents a specific policy violation
+type Violation struct {
+    Policy      string // Policy name (e.g., "hipaa.minimum_necessary")
+    Rule        string // Specific rule violated
+    Message     string // Human-readable message
+    Severity    string // "error", "warning", "info"
+}
+
+// ComplianceInput contains compliance check context
+type ComplianceInput struct {
+    TenantID    string
+    Framework   string   // "hipaa", "pci_dss", "soc2"
+    ToolName    string
+    Parameters  map[string]any
+    UserRole    string
+}
+
+// ComplianceResult contains compliance check results
+type ComplianceResult struct {
+    Compliant    bool
+    Framework    string
+    Violations   []Violation
+    Remediation  []string // Suggested fixes
+}
+
+// PolicyDefinition represents a policy to load
+type PolicyDefinition struct {
+    ID       string
+    Name     string
+    Version  string
+    Content  string // Rego, Cedar, or other policy language
+    Enabled  bool
+}
+
+// AuditFilter for querying audit logs
+type AuditFilter struct {
+    TenantID    string
+    ClientID    string
+    MCPServerID string
+    StartTime   time.Time
+    EndTime     time.Time
+    Allowed     *bool  // nil = all, true = allowed only, false = denied only
+    Limit       int
+    Offset      int
+}
+
+// AuditEntry represents a policy decision audit log
+type AuditEntry struct {
+    ID          string
+    Timestamp   time.Time
+    TenantID    string
+    ClientID    string
+    MCPServerID string
+    ToolName    string
+    Action      string
+    Allowed     bool
+    Reason      string
+    Latency     time.Duration
+    RequestID   string
+}
+```
+
+### Provider Registry
+
+```go
+// internal/provider/registry.go
+package provider
+
+import (
+    "fmt"
+    "sync"
+    
+    "github.com/giru-ai/giru/internal/proxy"
+    "github.com/giru-ai/giru/internal/policy"
+)
+
+// Registry manages available providers and active instances
+type Registry struct {
+    mu sync.RWMutex
+    
+    // Registered provider factories
+    proxyFactories  map[string]ProxyFactory
+    policyFactories map[string]PolicyFactory
+    
+    // Active instances
+    activeProxy  proxy.Provider
+    activePolicy policy.Engine
+}
+
+// ProxyFactory creates a proxy provider from config
+type ProxyFactory func(cfg *ProxyConfig) (proxy.Provider, error)
+
+// PolicyFactory creates a policy engine from config
+type PolicyFactory func(cfg *PolicyConfig) (policy.Engine, error)
+
+// ProxyConfig contains proxy provider configuration
+type ProxyConfig struct {
+    Provider string            // "envoy", "kong", "nginx"
+    Address  string            // Provider-specific address
+    Options  map[string]any    // Provider-specific options
+}
+
+// PolicyConfig contains policy engine configuration
+type PolicyConfig struct {
+    Engine  string            // "opa", "cedar", "spicedb"
+    Address string            // Engine-specific address
+    Options map[string]any    // Engine-specific options
+}
+
+// Global registry instance
+var globalRegistry = &Registry{
+    proxyFactories:  make(map[string]ProxyFactory),
+    policyFactories: make(map[string]PolicyFactory),
+}
+
+// RegisterProxyProvider registers a proxy provider factory
+// Called in init() by each provider implementation
+func RegisterProxyProvider(name string, factory ProxyFactory) {
+    globalRegistry.mu.Lock()
+    defer globalRegistry.mu.Unlock()
+    globalRegistry.proxyFactories[name] = factory
+}
+
+// RegisterPolicyEngine registers a policy engine factory
+// Called in init() by each engine implementation
+func RegisterPolicyEngine(name string, factory PolicyFactory) {
+    globalRegistry.mu.Lock()
+    defer globalRegistry.mu.Unlock()
+    globalRegistry.policyFactories[name] = factory
+}
+
+// NewProxyProvider creates a proxy provider by name
+func NewProxyProvider(cfg *ProxyConfig) (proxy.Provider, error) {
+    globalRegistry.mu.RLock()
+    factory, ok := globalRegistry.proxyFactories[cfg.Provider]
+    globalRegistry.mu.RUnlock()
+    
+    if !ok {
+        return nil, fmt.Errorf("unknown proxy provider: %s", cfg.Provider)
+    }
+    return factory(cfg)
+}
+
+// NewPolicyEngine creates a policy engine by name
+func NewPolicyEngine(cfg *PolicyConfig) (policy.Engine, error) {
+    globalRegistry.mu.RLock()
+    factory, ok := globalRegistry.policyFactories[cfg.Engine]
+    globalRegistry.mu.RUnlock()
+    
+    if !ok {
+        return nil, fmt.Errorf("unknown policy engine: %s", cfg.Engine)
+    }
+    return factory(cfg)
+}
+
+// AvailableProxyProviders returns registered proxy provider names
+func AvailableProxyProviders() []string {
+    globalRegistry.mu.RLock()
+    defer globalRegistry.mu.RUnlock()
+    
+    names := make([]string, 0, len(globalRegistry.proxyFactories))
+    for name := range globalRegistry.proxyFactories {
+        names = append(names, name)
+    }
+    return names
+}
+
+// AvailablePolicyEngines returns registered policy engine names
+func AvailablePolicyEngines() []string {
+    globalRegistry.mu.RLock()
+    defer globalRegistry.mu.RUnlock()
+    
+    names := make([]string, 0, len(globalRegistry.policyFactories))
+    for name := range globalRegistry.policyFactories {
+        names = append(names, name)
+    }
+    return names
+}
+```
+
+### Default Implementations (Open Source)
+
+#### Envoy Proxy Provider
+
+```go
+// internal/proxy/envoy/provider.go
+package envoy
+
+import (
+    "context"
+    
+    "github.com/giru-ai/giru/internal/proxy"
+    "github.com/giru-ai/giru/internal/provider"
+)
+
+func init() {
+    // Register Envoy provider at startup
+    provider.RegisterProxyProvider("envoy", NewProvider)
+}
+
+// Provider implements proxy.Provider for Envoy via xDS
+type Provider struct {
+    xdsServer  *XDSServer
+    config     *Config
+}
+
+type Config struct {
+    XDSPort        int    // gRPC port for xDS (default: 18000)
+    NodeID         string // Envoy node identifier
+    ClusterName    string // Envoy cluster name
+    EnableALS      bool   // Access Log Service
+}
+
+func NewProvider(cfg *provider.ProxyConfig) (proxy.Provider, error) {
+    config := parseConfig(cfg.Options)
+    return &Provider{
+        config: config,
+    }, nil
+}
+
+func (p *Provider) Name() string { return "envoy" }
+
+func (p *Provider) Start(ctx context.Context) error {
+    // Initialize xDS gRPC server
+    p.xdsServer = NewXDSServer(p.config)
+    return p.xdsServer.Start(ctx)
+}
+
+func (p *Provider) UpdateRoutes(ctx context.Context, routes []proxy.Route) error {
+    // Convert to Envoy RouteConfiguration and push via xDS
+    return p.xdsServer.PushRoutes(ctx, routes)
+}
+
+func (p *Provider) UpdateRateLimits(ctx context.Context, limits []proxy.RateLimit) error {
+    // Configure Envoy rate limit service
+    return p.xdsServer.PushRateLimits(ctx, limits)
+}
+
+func (p *Provider) RegisterUpstream(ctx context.Context, upstream proxy.Upstream) error {
+    // Add to Envoy ClusterLoadAssignment
+    return p.xdsServer.AddUpstream(ctx, upstream)
+}
+
+// ... implement remaining interface methods
+```
+
+#### OPA Policy Engine
+
+```go
+// internal/policy/opa/engine.go
+package opa
+
+import (
+    "context"
+    
+    "github.com/giru-ai/giru/internal/policy"
+    "github.com/giru-ai/giru/internal/provider"
+    "github.com/open-policy-agent/opa/rego"
+)
+
+func init() {
+    // Register OPA engine at startup
+    provider.RegisterPolicyEngine("opa", NewEngine)
+}
+
+// Engine implements policy.Engine for OPA
+type Engine struct {
+    client     *http.Client  // For remote OPA
+    embedded   *rego.Rego    // For embedded OPA
+    config     *Config
+    policyData map[string]any
+}
+
+type Config struct {
+    Mode          string // "embedded" or "remote"
+    RemoteAddress string // OPA server address (remote mode)
+    BundlePath    string // Policy bundle path (embedded mode)
+}
+
+func NewEngine(cfg *provider.PolicyConfig) (policy.Engine, error) {
+    config := parseConfig(cfg.Options)
+    return &Engine{
+        config:     config,
+        policyData: make(map[string]any),
+    }, nil
+}
+
+func (e *Engine) Name() string { return "opa" }
+
+func (e *Engine) Start(ctx context.Context) error {
+    if e.config.Mode == "embedded" {
+        return e.initEmbedded(ctx)
+    }
+    return e.initRemote(ctx)
+}
+
+func (e *Engine) Evaluate(ctx context.Context, input *policy.EvaluationInput) (*policy.EvaluationResult, error) {
+    start := time.Now()
+    
+    // Build OPA input document
+    opaInput := map[string]any{
+        "tenant_id":     input.TenantID,
+        "client_id":     input.ClientID,
+        "mcp_server_id": input.MCPServerID,
+        "tool_name":     input.ToolName,
+        "action":        input.Action,
+        "parameters":    input.Parameters,
+        "user":          input.UserContext,
+        "timestamp":     input.Timestamp,
+    }
+    
+    // Query OPA
+    result, err := e.query(ctx, "data.giru.authz.allow", opaInput)
+    if err != nil {
+        return nil, err
+    }
+    
+    return &policy.EvaluationResult{
+        Allowed: result.Allowed,
+        Reason:  result.Reason,
+        Latency: time.Since(start),
+    }, nil
+}
+
+// ... implement remaining interface methods
+```
+
+### Enterprise Implementations (giru-enterprise)
+
+Enterprise customers can use alternative providers:
+
+```go
+// giru-enterprise/internal/proxy/kong/provider.go
+package kong
+
+func init() {
+    provider.RegisterProxyProvider("kong", NewProvider)
+}
+
+// Provider implements proxy.Provider for Kong Gateway
+type Provider struct {
+    adminClient *KongAdminClient
+    config      *Config
+}
+
+// Uses Kong Admin API to configure routes, upstreams, plugins
+```
+
+```go
+// giru-enterprise/internal/policy/cedar/engine.go
+package cedar
+
+func init() {
+    provider.RegisterPolicyEngine("cedar", NewEngine)
+}
+
+// Engine implements policy.Engine for AWS Cedar
+type Engine struct {
+    // Uses Cedar policy language for fine-grained authorization
+}
+```
+
+```go
+// giru-enterprise/internal/policy/spicedb/engine.go
+package spicedb
+
+func init() {
+    provider.RegisterPolicyEngine("spicedb", NewEngine)
+}
+
+// Engine implements policy.Engine for SpiceDB (Zanzibar)
+type Engine struct {
+    // Uses SpiceDB for relationship-based access control
+}
+```
+
+### Configuration
+
+```yaml
+# configs/giru.yaml
+
+# Proxy provider configuration
+proxy:
+  provider: envoy  # "envoy" (default), "kong", "nginx" (enterprise)
+  envoy:
+    xds_port: 18000
+    node_id: giru-gateway
+    enable_als: true
+  # kong:  # Enterprise only
+  #   admin_url: http://localhost:8001
+  #   workspace: default
+  # nginx:  # Enterprise only
+  #   config_path: /etc/nginx/conf.d
+
+# Policy engine configuration  
+policy:
+  engine: opa  # "opa" (default), "cedar", "spicedb" (enterprise)
+  opa:
+    mode: embedded  # "embedded" or "remote"
+    bundle_path: ./policies
+    # remote_address: http://localhost:8181  # For remote mode
+  # cedar:  # Enterprise only
+  #   policy_store: ./policies/cedar
+  # spicedb:  # Enterprise only
+  #   endpoint: localhost:50051
+  #   preshared_key: ${SPICEDB_KEY}
+```
+
+### Provider Selection by Deployment Model
+
+| Deployment | Proxy | Policy Engine | Notes |
+|------------|-------|---------------|-------|
+| **Open Source Self-Host** | Envoy | OPA | CNCF stack, battle-tested |
+| **Managed SaaS** | Envoy AI Gateway | OPA | We control, optimized for MCP |
+| **Enterprise Self-Host** | Customer choice | Customer choice | Adapters provided |
+| **Enterprise (We Manage)** | Customer choice | Customer choice | We deploy in their cloud |
+
+### Envoy AI Gateway Integration
+
+As Envoy AI Gateway adds native MCP support, Giru leverages it:
+
+```go
+// internal/proxy/envoy/aigateway.go
+package envoy
+
+// AIGatewayProvider extends Provider with Envoy AI Gateway features
+type AIGatewayProvider struct {
+    *Provider
+    mcpConfig *MCPConfig
+}
+
+type MCPConfig struct {
+    // Leverage Envoy AI Gateway's native MCP support
+    EnableMCPProxy     bool
+    MCPServerDiscovery bool   // Auto-discover MCP servers
+    ToolAggregation    bool   // Aggregate tools from multiple servers
+}
+
+func (p *AIGatewayProvider) ConfigureMCPRouting(ctx context.Context) error {
+    // Use Envoy AI Gateway's MCP-specific configuration
+    // This offloads protocol handling to Envoy while Giru manages:
+    // - Multi-tenancy
+    // - Subscriptions
+    // - Compliance policies
+    // - Billing/metering
+}
+```
+
+---
+
 ## Directory Structure to Create
 
 ### Repository 1: giru-ai/giru (Open Source - Apache 2.0)
@@ -734,6 +1402,30 @@ giru/
 │   │   └── grpc/                    # gRPC for xDS
 │   │       └── xds_server.go
 │   │
+│   ├── proxy/                       # Proxy provider abstraction
+│   │   ├── provider.go              # Provider interface (see Provider Abstraction Architecture)
+│   │   ├── types.go                 # Route, RateLimit, Upstream, Metrics types
+│   │   └── envoy/                   # Envoy implementation (default)
+│   │       ├── provider.go          # Envoy provider implementation
+│   │       ├── xds.go               # xDS server for dynamic config
+│   │       ├── routes.go            # Route configuration
+│   │       ├── clusters.go          # Upstream cluster management
+│   │       └── ratelimit.go         # Rate limit configuration
+│   │
+│   ├── policy/                      # Policy engine abstraction
+│   │   ├── engine.go                # Engine interface (see Provider Abstraction Architecture)
+│   │   ├── types.go                 # EvaluationInput, EvaluationResult, etc.
+│   │   └── opa/                     # OPA implementation (default)
+│   │       ├── engine.go            # OPA engine implementation
+│   │       ├── embedded.go          # Embedded OPA mode
+│   │       ├── remote.go            # Remote OPA mode
+│   │       └── compliance.go        # Compliance policy helpers
+│   │
+│   ├── provider/                    # Provider registry and factory
+│   │   ├── registry.go              # Global provider registry
+│   │   ├── config.go                # ProxyConfig, PolicyConfig types
+│   │   └── factory.go               # Provider factory functions
+│   │
 │   ├── database/
 │   │   ├── db.go                    # Connection pool (pgx)
 │   │   ├── migrations.go            # Goose runner
@@ -751,7 +1443,7 @@ giru/
 │   │   ├── apikey.go
 │   │   └── jwt.go
 │   │
-│   ├── ratelimit/                   # Rate limiting
+│   ├── ratelimit/                   # Rate limiting (Redis-based, used by proxy providers)
 │   │   └── redis.go
 │   │
 │   ├── config/                      # Configuration
@@ -928,6 +1620,27 @@ giru-enterprise/
 │   ├── license/                     # License validation
 │   │   ├── manager.go
 │   │   └── features.go
+│   │
+│   ├── proxy/                       # Alternative proxy providers (Enterprise)
+│   │   ├── kong/                    # Kong Gateway provider
+│   │   │   ├── provider.go          # Implements proxy.Provider
+│   │   │   ├── admin.go             # Kong Admin API client
+│   │   │   ├── routes.go            # Route/Service management
+│   │   │   └── plugins.go           # Plugin configuration
+│   │   └── nginx/                   # NGINX provider
+│   │       ├── provider.go          # Implements proxy.Provider
+│   │       ├── config.go            # NGINX config generation
+│   │       └── reload.go            # Config reload handling
+│   │
+│   ├── policy/                      # Alternative policy engines (Enterprise)
+│   │   ├── cedar/                   # AWS Cedar engine
+│   │   │   ├── engine.go            # Implements policy.Engine
+│   │   │   ├── schema.go            # Cedar schema definitions
+│   │   │   └── policies.go          # Cedar policy management
+│   │   └── spicedb/                 # SpiceDB/Zanzibar engine
+│   │       ├── engine.go            # Implements policy.Engine
+│   │       ├── schema.go            # SpiceDB schema definitions
+│   │       └── relationships.go     # Relationship management
 │   │
 │   ├── auth/
 │   │   ├── sso/                     # SSO providers
@@ -2502,25 +3215,25 @@ test_allow_appropriate_request {
 
 ### Technology Stack Summary
 
-| Layer | Technology | Purpose |
-|-------|------------|---------|
-| Proxy | Envoy 1.28+ | High-performance routing, TLS, rate limiting |
-| Policy | OPA | Authorization, compliance, parameter validation |
-| Control Plane | Go 1.21+ / Fiber | REST API, xDS server, business logic |
-| Database | PostgreSQL 15+ | Configuration, audit logs |
-| Cache | Redis 7+ | Rate limiting, sessions |
-| UI | Svelte 5 / SvelteKit 2 | Admin dashboard (Enterprise) |
-| Credentials | HashiCorp Vault | Secret storage, rotation |
+| Layer | Technology | Purpose | Swappable? |
+|-------|------------|---------|------------|
+| Proxy | Envoy 1.28+ (default) | High-performance routing, TLS, rate limiting | ✅ Enterprise: Kong, NGINX |
+| Policy | OPA (default) | Authorization, compliance, parameter validation | ✅ Enterprise: Cedar, SpiceDB |
+| Control Plane | Go 1.21+ / Fiber | REST API, xDS server, business logic | ❌ Core component |
+| Database | PostgreSQL 15+ | Configuration, audit logs | ❌ Core component |
+| Cache | Redis 7+ | Rate limiting, sessions | ❌ Core component |
+| UI | Svelte 5 / SvelteKit 2 | Admin dashboard (Enterprise) | ❌ Core component |
+| Credentials | HashiCorp Vault | Secret storage, rotation | ❌ Core component |
 
 ### Feature Matrix: Open Source vs Enterprise
 
 | Feature | Community | Enterprise |
 |---------|-----------|------------|
+| **Core Gateway** | | |
 | MCP gateway core | ✅ | ✅ |
 | xDS dynamic config | ✅ | ✅ |
 | Basic rate limiting | ✅ | ✅ |
 | API key auth | ✅ | ✅ |
-| OPA policy engine | ✅ | ✅ |
 | REST API | ✅ | ✅ |
 | CLI | ✅ | ✅ |
 | PostgreSQL + Redis | ✅ | ✅ |
@@ -2528,8 +3241,21 @@ test_allow_appropriate_request {
 | Docker Compose | ✅ | ✅ |
 | Kubernetes manifests | ✅ | ✅ |
 | Basic compliance policies | ✅ | ✅ |
+| **Proxy Providers** | | |
+| Envoy (default) | ✅ | ✅ |
+| Envoy AI Gateway integration | ✅ | ✅ |
+| Kong Gateway | ❌ | ✅ |
+| NGINX | ❌ | ✅ |
+| Custom proxy adapters | ❌ | ✅ |
+| **Policy Engines** | | |
+| OPA/Rego (default) | ✅ | ✅ |
+| AWS Cedar | ❌ | ✅ |
+| SpiceDB (Zanzibar) | ❌ | ✅ |
+| Custom policy adapters | ❌ | ✅ |
+| **Authentication** | | |
 | SSO (SAML/OIDC) | ❌ | ✅ |
 | MFA | ❌ | ✅ |
+| **Enterprise Features** | | |
 | Multi-tenancy | ❌ | ✅ |
 | Enhanced audit logs | ❌ | ✅ |
 | Advanced compliance (HIPAA/PCI-DSS) | ❌ | ✅ |

@@ -23,7 +23,8 @@ This file contains comprehensive instructions for Claude Code to scaffold the Gi
 15. [Implementation Phases](#initial-implementation-priority)
 16. [Post-MVP Roadmap](#post-mvp-roadmap)
 17. [Success Metrics](#success-metrics)
-18. [Final Notes for Claude Code](#final-notes-for-claude-code)
+18. [AI-First Development](#ai-first-development)
+19. [Final Notes for Claude Code](#final-notes-for-claude-code)
 
 ---
 
@@ -3161,6 +3162,116 @@ This section tracks improvements and optimizations to implement after MVP is sta
 | Deploy Time | < 10 minutes |
 | PR Review Time | < 24 hours |
 | Issue Resolution | < 7 days average |
+
+---
+
+## AI-First Development
+
+This project uses **AI-first development** (Vibe Coding) with Claude Code. All development follows structured workflows with specialized agents.
+
+### Required Files
+
+| File | Purpose |
+|------|---------|
+| `CLAUDE.md` | Main AI instructions, The Five Golden Rules |
+| `AI_WORKFLOW.md` | Development phases and conventions |
+| `context/agents/PRE-FLIGHT-CHECKLIST.md` | Mandatory pre-coding checklist |
+| `context/INDEX.md` | Navigation to all context files |
+
+### Directory Structure
+
+```
+.claude/
+├── agents/              # Specialized agent profiles
+│   ├── backend-architect.md
+│   ├── database-optimizer.md
+│   ├── policy-engineer.md
+│   ├── envoy-specialist.md
+│   ├── frontend-developer.md
+│   ├── security-auditor.md
+│   ├── test-automator.md
+│   ├── mcp-integration.md
+│   ├── devops-engineer.md
+│   ├── documentation-writer.md
+│   └── code-reviewer.md
+├── hooks/               # Automation scripts
+│   ├── pre-task.sh
+│   ├── pre-commit.sh
+│   └── post-task.sh
+├── commands/            # Custom slash commands
+└── settings.json        # Project configuration
+
+context/
+├── agents/              # Agent-specific context
+│   └── PRE-FLIGHT-CHECKLIST.md
+├── domains/             # Domain knowledge
+├── architecture/        # Architecture docs
+├── patterns/            # Code patterns
+├── integrations/        # Integration guides
+└── INDEX.md             # Navigation index
+
+tasks/
+├── TASK_TEMPLATE.md     # Template for new tasks
+├── active/              # Current work
+├── backlog/             # Pending tasks
+└── completed/           # Finished tasks
+```
+
+### The Five Golden Rules (Summary)
+
+**CRITICAL: These rules apply to ALL code in this project.**
+
+#### Backend (Go)
+1. **IDs**: `ulid.Make().String()` - NEVER `uuid.New()`
+2. **Multi-Tenant**: `tenant_id` in EVERY database query
+3. **Errors**: Check ALL errors - NEVER ignore with `_`
+4. **Money**: `int64` cents - NEVER float
+5. **Soft Delete**: `deleted_at IS NULL` in ALL SELECTs
+
+#### Database (PostgreSQL)
+1. **Tables**: ALL have `tenant_id`, `created_at`, `updated_at`, `deleted_at`
+2. **IDs**: Primary keys are `CHAR(26)` for ULIDs
+3. **Queries**: ALL include `deleted_at IS NULL`
+4. **Isolation**: NEVER query across tenants
+5. **Money**: `DECIMAL(10,2)`, store as cents in app
+
+#### OPA Policies
+1. **Default**: Always `default allow := false`
+2. **Tenant**: Every policy verifies `tenant_id`
+3. **Roles**: Respect hierarchy (admin > manager > user)
+4. **Audit**: Log all authorization decisions
+5. **Isolation**: Never expose cross-tenant data
+
+#### Frontend (Svelte)
+1. **State**: Svelte 5 runes (`$state`, `$derived`, `$effect`)
+2. **Types**: Full TypeScript - NEVER `any`
+3. **API**: Include tenant context header
+4. **Auth**: Check on EVERY protected route
+5. **Errors**: User-friendly messages, log technical
+
+### Development Workflow
+
+1. **Task Definition**: Create task file from template
+2. **Context Loading**: Complete PRE-FLIGHT-CHECKLIST
+3. **Implementation**: Follow agent guidelines
+4. **Validation**: Run tests, security checks
+5. **Completion**: Update task, commit changes
+
+### Agent Selection
+
+| Task Type | Agent |
+|-----------|-------|
+| API endpoints, services | backend-architect |
+| Schema, queries, migrations | database-optimizer |
+| Authorization, RBAC | policy-engineer |
+| Gateway, routing | envoy-specialist |
+| UI components | frontend-developer |
+| Security review | security-auditor |
+| Writing tests | test-automator |
+| MCP protocol | mcp-integration |
+| Docker, CI/CD | devops-engineer |
+| Documentation | documentation-writer |
+| Code review | code-reviewer |
 
 ---
 

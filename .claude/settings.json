@@ -1,0 +1,58 @@
+{
+  "project": {
+    "name": "giru",
+    "type": "multi-tenant-mcp-gateway",
+    "language": "go",
+    "framework": "fiber"
+  },
+  "agents": {
+    "default": "backend-architect",
+    "available": [
+      "backend-architect",
+      "database-optimizer",
+      "policy-engineer",
+      "envoy-specialist",
+      "frontend-developer",
+      "security-auditor",
+      "test-automator",
+      "mcp-integration",
+      "devops-engineer",
+      "documentation-writer",
+      "code-reviewer"
+    ]
+  },
+  "workflows": {
+    "require_preflight": true,
+    "require_tests": true,
+    "require_review": true
+  },
+  "context": {
+    "always_load": [
+      "CLAUDE.md",
+      "context/agents/PRE-FLIGHT-CHECKLIST.md"
+    ],
+    "domain_specific": {
+      "backend": ["SCAFFOLD.md#core-concepts", "SCAFFOLD.md#database-strategy"],
+      "frontend": ["SCAFFOLD.md#web-ui-strategy"],
+      "policy": ["SCAFFOLD.md#opa-policy-engine", "policies/README.md"],
+      "mcp": ["MCP_PROTOCOL_RESEARCH.md", "SCAFFOLD.md#mcp-integration"]
+    }
+  },
+  "conventions": {
+    "ids": "ulid",
+    "money": "int64_cents",
+    "soft_delete": true,
+    "multi_tenant": true,
+    "branch_prefix": {
+      "feature": "feat/",
+      "bugfix": "fix/",
+      "refactor": "refactor/",
+      "docs": "docs/"
+    }
+  },
+  "testing": {
+    "minimum_coverage": 80,
+    "critical_path_coverage": 100,
+    "run_before_commit": true
+  }
+}

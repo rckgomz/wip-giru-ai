@@ -10,7 +10,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 echo "=== Giru Pre-Task Check ==="
 
 # Check if PRE-FLIGHT-CHECKLIST exists
-if [ ! -f "$PROJECT_ROOT/context/agents/PRE-FLIGHT-CHECKLIST.md" ]; then
+if [ ! -f "$PROJECT_ROOT/.claude/context/agents/PRE-FLIGHT-CHECKLIST.md" ]; then
     echo "WARNING: PRE-FLIGHT-CHECKLIST.md not found"
     echo "Please ensure context files are set up"
 fi

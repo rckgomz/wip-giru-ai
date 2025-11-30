@@ -29,7 +29,7 @@
   "context": {
     "always_load": [
       "CLAUDE.md",
-      "context/agents/PRE-FLIGHT-CHECKLIST.md"
+      ".claude/context/agents/PRE-FLIGHT-CHECKLIST.md"
     ],
     "domain_specific": {
       "backend": ["SCAFFOLD.md#core-concepts", "SCAFFOLD.md#database-strategy"],

@@ -146,27 +146,26 @@ task policy:fmt             # Format Rego files
 giru/
 ├── CLAUDE.md                    # This file
 ├── SCAFFOLD.md                  # Full project specification
-├── AI_WORKFLOW.md               # Development workflow
 ├── Taskfile.yml                 # Build automation (NOT Makefile)
 │
 ├── .claude/
 │   ├── settings.json            # Claude Code settings
-│   ├── agents/                  # Agent profiles (15+)
-│   └── hooks/                   # Automation hooks
-│
-├── context/
-│   ├── INDEX.md                 # Navigation index
-│   ├── agents/                  # Agent-specific context
-│   │   └── PRE-FLIGHT-CHECKLIST.md  # MANDATORY before coding
-│   ├── domains/                 # Business domain docs
-│   ├── architecture/            # Technical decisions
-│   ├── patterns/                # Implementation patterns
-│   └── integrations/            # External service docs
-│
-├── tasks/
-│   ├── active/                  # Currently working on
-│   ├── completed/               # Archived with summary
-│   └── backlog/                 # Future work
+│   ├── agents/                  # Agent profiles (11+)
+│   ├── hooks/                   # Automation hooks
+│   ├── commands/                # Custom slash commands
+│   ├── AI_WORKFLOW.md           # Development workflow
+│   ├── context/
+│   │   ├── INDEX.md             # Navigation index
+│   │   ├── agents/              # Agent-specific context
+│   │   │   └── PRE-FLIGHT-CHECKLIST.md  # MANDATORY before coding
+│   │   ├── domains/             # Business domain docs
+│   │   ├── architecture/        # Technical decisions
+│   │   ├── patterns/            # Implementation patterns
+│   │   └── integrations/        # External service docs
+│   └── tasks/
+│       ├── active/              # Currently working on
+│       ├── completed/           # Archived with summary
+│       └── backlog/             # Future work
 │
 ├── cmd/                         # Entry points
 ├── internal/                    # Private code
@@ -185,7 +184,7 @@ giru/
 
 ### Before ANY Code
 
-1. **ALWAYS** read `context/agents/PRE-FLIGHT-CHECKLIST.md`
+1. **ALWAYS** read `.claude/context/agents/PRE-FLIGHT-CHECKLIST.md`
 2. Load agent-specific context based on task domain
 3. Reference architecture decisions for design choices
 4. Check existing patterns before creating new ones
@@ -193,7 +192,7 @@ giru/
 ### Context Priority
 
 ```
-1. PRE-FLIGHT-CHECKLIST.md (mandatory)
+1. .claude/context/agents/PRE-FLIGHT-CHECKLIST.md (mandatory)
 2. Agent context file (based on task)
 3. Domain documentation (if business logic)
 4. Architecture decisions (if design choices)
@@ -491,9 +490,9 @@ Before committing, ensure:
 ## References
 
 - **Full Specification**: [SCAFFOLD.md](./SCAFFOLD.md)
-- **Development Workflow**: [AI_WORKFLOW.md](./AI_WORKFLOW.md)
-- **Context Index**: [context/INDEX.md](./context/INDEX.md)
-- **Pre-Flight Checklist**: [context/agents/PRE-FLIGHT-CHECKLIST.md](./context/agents/PRE-FLIGHT-CHECKLIST.md)
+- **Development Workflow**: [.claude/AI_WORKFLOW.md](./.claude/AI_WORKFLOW.md)
+- **Context Index**: [.claude/context/INDEX.md](./.claude/context/INDEX.md)
+- **Pre-Flight Checklist**: [.claude/context/agents/PRE-FLIGHT-CHECKLIST.md](./.claude/context/agents/PRE-FLIGHT-CHECKLIST.md)
 
 ---
 

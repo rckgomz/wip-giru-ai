@@ -3174,9 +3174,9 @@ This project uses **AI-first development** (Vibe Coding) with Claude Code. All d
 | File | Purpose |
 |------|---------|
 | `CLAUDE.md` | Main AI instructions, The Five Golden Rules |
-| `AI_WORKFLOW.md` | Development phases and conventions |
-| `context/agents/PRE-FLIGHT-CHECKLIST.md` | Mandatory pre-coding checklist |
-| `context/INDEX.md` | Navigation to all context files |
+| `.claude/AI_WORKFLOW.md` | Development phases and conventions |
+| `.claude/context/agents/PRE-FLIGHT-CHECKLIST.md` | Mandatory pre-coding checklist |
+| `.claude/context/INDEX.md` | Navigation to all context files |
 
 ### Directory Structure
 
@@ -3199,22 +3199,21 @@ This project uses **AI-first development** (Vibe Coding) with Claude Code. All d
 │   ├── pre-commit.sh
 │   └── post-task.sh
 ├── commands/            # Custom slash commands
-└── settings.json        # Project configuration
-
-context/
-├── agents/              # Agent-specific context
-│   └── PRE-FLIGHT-CHECKLIST.md
-├── domains/             # Domain knowledge
-├── architecture/        # Architecture docs
-├── patterns/            # Code patterns
-├── integrations/        # Integration guides
-└── INDEX.md             # Navigation index
-
-tasks/
-├── TASK_TEMPLATE.md     # Template for new tasks
-├── active/              # Current work
-├── backlog/             # Pending tasks
-└── completed/           # Finished tasks
+├── settings.json        # Project configuration
+├── AI_WORKFLOW.md       # Development workflow
+├── context/
+│   ├── INDEX.md         # Navigation index
+│   ├── agents/          # Agent-specific context
+│   │   └── PRE-FLIGHT-CHECKLIST.md
+│   ├── domains/         # Domain knowledge
+│   ├── architecture/    # Architecture docs
+│   ├── patterns/        # Code patterns
+│   └── integrations/    # Integration guides
+└── tasks/
+    ├── TASK_TEMPLATE.md # Template for new tasks
+    ├── active/          # Current work
+    ├── backlog/         # Pending tasks
+    └── completed/       # Finished tasks
 ```
 
 ### The Five Golden Rules (Summary)

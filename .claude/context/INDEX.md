@@ -6,8 +6,8 @@ Quick navigation to all context files for AI-assisted development.
 
 | Document | Purpose | When to Read |
 |----------|---------|--------------|
-| [CLAUDE.md](../CLAUDE.md) | AI instructions, golden rules | Always first |
-| [SCAFFOLD.md](../SCAFFOLD.md) | Full project specification | Before any implementation |
+| [CLAUDE.md](../../CLAUDE.md) | AI instructions, golden rules | Always first |
+| [SCAFFOLD.md](../../SCAFFOLD.md) | Full project specification | Before any implementation |
 | [AI_WORKFLOW.md](../AI_WORKFLOW.md) | Development workflow | Starting new tasks |
 
 ## Agent Profiles
@@ -16,22 +16,22 @@ Located in `.claude/agents/`:
 
 | Agent | Domain | Use For |
 |-------|--------|---------|
-| [backend-architect](../.claude/agents/backend-architect.md) | Go services | API endpoints, business logic |
-| [database-optimizer](../.claude/agents/database-optimizer.md) | PostgreSQL | Schema, queries, migrations |
-| [policy-engineer](../.claude/agents/policy-engineer.md) | OPA/Rego | Authorization policies |
-| [envoy-specialist](../.claude/agents/envoy-specialist.md) | Envoy proxy | Gateway configuration |
-| [frontend-developer](../.claude/agents/frontend-developer.md) | Svelte/TS | Web UI components |
-| [security-auditor](../.claude/agents/security-auditor.md) | Security | Code review, audits |
-| [test-automator](../.claude/agents/test-automator.md) | Testing | Unit, integration tests |
-| [mcp-integration](../.claude/agents/mcp-integration.md) | MCP protocol | Server connections |
-| [devops-engineer](../.claude/agents/devops-engineer.md) | Infrastructure | Docker, CI/CD |
-| [documentation-writer](../.claude/agents/documentation-writer.md) | Docs | API docs, guides |
-| [code-reviewer](../.claude/agents/code-reviewer.md) | Quality | Code review |
+| [backend-architect](../agents/backend-architect.md) | Go services | API endpoints, business logic |
+| [database-optimizer](../agents/database-optimizer.md) | PostgreSQL | Schema, queries, migrations |
+| [policy-engineer](../agents/policy-engineer.md) | OPA/Rego | Authorization policies |
+| [envoy-specialist](../agents/envoy-specialist.md) | Envoy proxy | Gateway configuration |
+| [frontend-developer](../agents/frontend-developer.md) | Svelte/TS | Web UI components |
+| [security-auditor](../agents/security-auditor.md) | Security | Code review, audits |
+| [test-automator](../agents/test-automator.md) | Testing | Unit, integration tests |
+| [mcp-integration](../agents/mcp-integration.md) | MCP protocol | Server connections |
+| [devops-engineer](../agents/devops-engineer.md) | Infrastructure | Docker, CI/CD |
+| [documentation-writer](../agents/documentation-writer.md) | Docs | API docs, guides |
+| [code-reviewer](../agents/code-reviewer.md) | Quality | Code review |
 
 ## Context by Domain
 
 ### Backend Development
-- `context/agents/PRE-FLIGHT-CHECKLIST.md` - Pre-coding checklist
+- `agents/PRE-FLIGHT-CHECKLIST.md` - Pre-coding checklist
 - `SCAFFOLD.md#core-concepts` - Architecture overview
 - `TECH_STACK.md` - Technology decisions
 
@@ -74,10 +74,10 @@ Located in `.claude/agents/`:
 
 ## Task Management
 
-- `tasks/TASK_TEMPLATE.md` - Template for new tasks
-- `tasks/active/` - Current work
-- `tasks/backlog/` - Pending tasks
-- `tasks/completed/` - Finished tasks
+- `../tasks/TASK_TEMPLATE.md` - Template for new tasks
+- `../tasks/active/` - Current work
+- `../tasks/backlog/` - Pending tasks
+- `../tasks/completed/` - Finished tasks
 
 ## Hooks
 

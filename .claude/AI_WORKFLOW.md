@@ -18,14 +18,14 @@ Giru uses a **mandatory agent-driven development** approach where:
 
 ### Phase 1: Task Definition
 
-1. **Create task file** in `tasks/active/`
+1. **Create task file** in `.claude/tasks/active/`
 2. **Define scope** using the task template
 3. **Select agents** based on domain
 4. **Choose working mode** (Autonomous or Guided)
 
 ### Phase 2: Context Loading
 
-1. **Read PRE-FLIGHT-CHECKLIST.md** (mandatory)
+1. **Read `.claude/context/agents/PRE-FLIGHT-CHECKLIST.md`** (mandatory)
 2. **Load agent context** for selected agent(s)
 3. **Review domain documentation** if business logic involved
 4. **Check existing patterns** before implementing
@@ -47,7 +47,7 @@ Giru uses a **mandatory agent-driven development** approach where:
 ### Phase 5: Completion
 
 1. **Add implementation summary** to task file
-2. **Move task** to `tasks/completed/`
+2. **Move task** to `.claude/tasks/completed/`
 3. **Update related documentation** if patterns changed
 4. **Commit with proper message format**
 

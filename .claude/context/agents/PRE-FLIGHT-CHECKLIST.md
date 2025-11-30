@@ -7,7 +7,7 @@
 ### Required Reading
 - [ ] **CLAUDE.md** - The Five Golden Rules and agent matrix
 - [ ] **SCAFFOLD.md** - Relevant sections for current task
-- [ ] **AI_WORKFLOW.md** - Workflow phases and conventions
+- [ ] **.claude/AI_WORKFLOW.md** - Workflow phases and conventions
 
 ### Domain-Specific Context
 Load based on task domain:
@@ -121,4 +121,4 @@ Final verification before starting:
 
 ---
 
-**Once all checks pass, proceed with implementation following AI_WORKFLOW.md phases.**
+**Once all checks pass, proceed with implementation following .claude/AI_WORKFLOW.md phases.**

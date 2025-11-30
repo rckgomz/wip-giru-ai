@@ -39,8 +39,8 @@ Giru uses a **mandatory agent-driven development** approach where:
 
 ### Phase 4: Validation
 
-1. **Run linters**: `task lint`
-2. **Run tests**: `task test`
+1. **Run linters**: `make lint`
+2. **Run tests**: `make test`
 3. **Security check**: Verify tenant_id, ULID, deleted_at
 4. **Code review** (if multi-domain or architectural)
 
@@ -233,7 +233,7 @@ Clients need to create, read, update, and delete subscriptions through the REST 
 
 ### Phase 1: Database Layer
 - [ ] Add sqlc queries for CRUD operations
-- [ ] Generate Go code with `task sqlc:generate`
+- [ ] Generate Go code with `make sqlc-generate`
 - [ ] Test queries manually
 
 ### Phase 2: Handler Implementation
@@ -288,8 +288,8 @@ git commit -m "test(api): add subscription handler tests"
 
 ```bash
 # 1. Final validation
-task lint
-task test
+make lint
+make test
 
 # 2. Move task file
 mv tasks/active/GIRU-042-subscription-api.md tasks/completed/
@@ -356,13 +356,13 @@ Located in `context/patterns/`:
 
 ```bash
 # Run all checks
-task validate
+make validate
 
 # Or individually:
-task lint           # All linters
-task test           # All tests
-task policy:test    # OPA policy tests
-task fmt            # Format code
+make lint           # All linters
+make test           # All tests
+make policy-test    # OPA policy tests
+make fmt            # Format code
 ```
 
 ### Security Validation
@@ -405,7 +405,7 @@ grep -r "deleted_at IS NULL" db/queries/
    - Add unit tests
    - Test with sample inputs
    - Document policy
-5. **Validation**: `task policy:test`
+5. **Validation**: `make policy-test`
 
 ### Adding a New UI Feature
 
@@ -417,7 +417,7 @@ grep -r "deleted_at IS NULL" db/queries/
    - Add to route
    - Handle loading/error states
    - Write tests
-5. **Validation**: `task test:ui`
+5. **Validation**: `make test-ui`
 
 ### Debugging an Issue
 

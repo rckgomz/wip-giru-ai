@@ -699,15 +699,7 @@ When multiple MCPs provide the same tool name:
 
 Giru is designed with **swappable infrastructure providers** to support diverse enterprise requirements. The open source edition ships with Envoy and OPA as defaults, while enterprise customers can swap in alternative proxies (Kong, NGINX) or policy engines (Cedar, SpiceDB/Zanzibar).
 
-### Why Swappable Providers?
-
-| Reason | Benefit |
-|--------|---------|
-| **Enterprise requirements** | Customers may already have Kong/NGINX investments |
-| **Vendor neutrality** | Avoid lock-in, increase adoption |
-| **Future-proofing** | New proxies/engines can be added without core changes |
-| **Managed SaaS flexibility** | We control the stack; self-hosters choose theirs |
-| **Envoy AI Gateway convergence** | As Envoy adds native MCP support, we leverage it |
+> **Note**: See [Why Swappable Providers?](#why-swappable-providers) in the Technical Decisions section for the full rationale.
 
 ### Architecture Overview
 
@@ -1353,6 +1345,8 @@ func (p *AIGatewayProvider) ConfigureMCPRouting(ctx context.Context) error {
 ---
 
 ## Directory Structure to Create
+
+> **Reading Guide**: This section shows the complete file/folder structure. Detailed implementation for each component (Database Strategy, Policy Data Management, Authentication, Compliance Policies, etc.) follows in subsequent sections.
 
 ### Repository 1: giru-ai/giru (Open Source - Apache 2.0)
 

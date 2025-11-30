@@ -8,20 +8,20 @@ This document configures Claude Code for AI-first development on the Giru MCP Ga
 
 ```bash
 # Development
-task dev                    # Start full development environment
-task dev:backend            # Backend only (Go)
-task dev:ui                 # Frontend only (Svelte)
-task test                   # Run all tests
-task lint                   # Run all linters
+make dev                    # Start full development environment
+make dev-backend            # Backend only (Go)
+make dev-ui                 # Frontend only (Svelte)
+make test                   # Run all tests
+make lint                   # Run all linters
 
 # Database
-task db:migrate             # Run migrations
-task db:seed                # Load seed data
-task db:reset               # Reset and reseed
+make db-migrate             # Run migrations
+make db-seed                # Load seed data
+make db-reset               # Reset and reseed
 
 # Policies
-task policy:test            # Test OPA policies
-task policy:fmt             # Format Rego files
+make policy-test            # Test OPA policies
+make policy-fmt             # Format Rego files
 ```
 
 ---
@@ -136,7 +136,7 @@ task policy:fmt             # Format Rego files
 | Policy | OPA / Rego | Stateless decisions |
 | Secrets | HashiCorp Vault | Default, pgcrypto fallback |
 | UI | Svelte 5 / SvelteKit 2 | Enterprise edition |
-| Build | Taskfile | NOT Make |
+| Build | Makefile | CNCF standard |
 
 ---
 
@@ -146,7 +146,7 @@ task policy:fmt             # Format Rego files
 giru/
 ├── CLAUDE.md                    # This file
 ├── SCAFFOLD.md                  # Full project specification
-├── Taskfile.yml                 # Build automation (NOT Makefile)
+├── Makefile                     # Build automation (CNCF standard)
 │
 ├── .claude/
 │   ├── settings.json            # Claude Code settings
@@ -410,19 +410,19 @@ token, err := h.vault.GetOAuthToken(ctx, server.VaultSecretPath)
 
 ```bash
 # All tests
-task test
+make test
 
 # Go tests with coverage
-task test:go
+make test-go
 
 # OPA policy tests
-task policy:test
+make policy-test
 
 # Svelte tests
-task test:ui
+make test-ui
 
 # Integration tests
-task test:integration
+make test-integration
 ```
 
 ---
@@ -475,9 +475,9 @@ chore(deps): upgrade Fiber to v2.52
 
 Before committing, ensure:
 
-- [ ] `task lint` passes with 0 errors
-- [ ] `task test` passes
-- [ ] `task policy:test` passes (if policies changed)
+- [ ] `make lint` passes with 0 errors
+- [ ] `make test` passes
+- [ ] `make policy-test` passes (if policies changed)
 - [ ] All queries include `tenant_id`
 - [ ] All queries include `deleted_at IS NULL`
 - [ ] No UUID usage (only ULID)

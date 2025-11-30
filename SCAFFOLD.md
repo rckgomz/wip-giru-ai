@@ -20,11 +20,38 @@ This file contains comprehensive instructions for Claude Code to scaffold the Gi
 12. [Key Implementation Requirements](#key-implementation-requirements)
 13. [Development Environment](#development-environment-configurations)
 14. [CI/CD and Deployment](#cicd-pipelines)
-15. [Implementation Phases](#initial-implementation-priority)
+15. [Implementation Priorities](#initial-implementation-priority)
 16. [Post-MVP Roadmap](#post-mvp-roadmap)
 17. [Success Metrics](#success-metrics)
 18. [AI-First Development](#ai-first-development)
 19. [Final Notes for Claude Code](#final-notes-for-claude-code)
+
+---
+
+## Quick Reference: Where to Start
+
+Use this table to find the right entry point for common tasks.
+
+| Task Type | Entry Point | Key Files |
+|-----------|-------------|-----------|
+| New API endpoint | `internal/api/rest/handlers/` | `routes.go`, create handler file |
+| Database change | `db/migrations/` | Create migration → `db/queries/` → `make sqlc-generate` |
+| New OPA policy | `policies/<domain>/` | Policy `.rego` file → test in `policies/tests/` |
+| UI feature | `web-ui/src/routes/` | Route folder → component → `$lib/stores/` |
+| New MCP transport | `internal/mcp/` | `transport_<type>.go` implementation |
+| Proxy configuration | `internal/proxy/envoy/` | xDS configuration files |
+| Add compliance rule | `policies/compliance/<framework>/` | Rego policy → JSON data → tests |
+| New CLI command | `cmd/giru/` | Command file → register in root |
+
+### File Naming Conventions
+
+```
+internal/api/rest/handlers/subscriptions.go  # REST handler (plural noun)
+db/queries/subscriptions.sql                  # sqlc queries (plural noun)
+db/migrations/00004_add_quotas.sql           # Migration (numbered, snake_case)
+policies/compliance/hipaa/minimum_necessary.rego  # Policy (snake_case)
+web-ui/src/routes/subscriptions/+page.svelte # Svelte route (plural noun)
+```
 
 ---
 
@@ -3680,9 +3707,12 @@ jobs:
 
 ## Initial Implementation Priority
 
-### Phase 1: Foundation (Weeks 1-4)
+Implementation is organized by priority level, not timelines. Complete each priority level before moving to the next.
+
+### Priority 1: Foundation (MVP Core)
 
 **Goal**: Working MCP gateway with basic features
+**Prerequisite**: None - start here
 
 - [ ] Repository structure and licensing
 - [ ] Database schema and migrations (Goose)
@@ -3701,9 +3731,10 @@ jobs:
 - [ ] Basic CLI (`giru server list`, `giru client create`)
 - [ ] Documentation (quick start, architecture)
 
-### Phase 2: Production Ready (Weeks 5-8)
+### Priority 2: Production Ready
 
 **Goal**: Deployable to production Kubernetes
+**Prerequisite**: Priority 1 complete
 
 - [ ] xDS server for dynamic Envoy config
 - [ ] Kubernetes manifests (Kustomize)
@@ -3720,9 +3751,10 @@ jobs:
 - [ ] Token refresh job
 - [ ] Production deployment guide
 
-### Phase 3: Enterprise Features (Weeks 9-12)
+### Priority 3: Enterprise Features
 
 **Goal**: Enterprise-ready with compliance
+**Prerequisite**: Priority 2 complete
 
 - [ ] License management system
 - [ ] SSO integration (SAML, OIDC)
@@ -3735,9 +3767,10 @@ jobs:
 - [ ] Enterprise Helm chart
 - [ ] Enterprise documentation
 
-### Phase 4: Polish and Launch (Weeks 13-16)
+### Priority 4: Launch Readiness
 
 **Goal**: Public launch ready
+**Prerequisite**: Priority 3 complete
 
 - [ ] Performance optimization
 - [ ] Load testing (100K+ RPS target)
@@ -3748,9 +3781,10 @@ jobs:
 - [ ] Community launch
 - [ ] Marketing website
 
-### Phase 5: Managed SaaS (Future)
+### Priority 5: Managed SaaS (Future)
 
 **Goal**: Multi-tenant SaaS platform
+**Prerequisite**: Priority 4 complete, market validation
 
 - [ ] Multi-tenant control plane
 - [ ] Usage metering

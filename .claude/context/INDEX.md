@@ -28,6 +28,15 @@ Located in `.claude/agents/`:
 | [documentation-writer](../agents/documentation-writer.md) | Docs | API docs, guides |
 | [code-reviewer](../agents/code-reviewer.md) | Quality | Code review |
 
+## Architecture Decision Records
+
+Located in `.claude/context/architecture/`:
+
+| Document | Purpose | When to Read |
+|----------|---------|--------------|
+| [SCAFFOLD-INDEX.md](architecture/SCAFFOLD-INDEX.md) | Navigate SCAFFOLD.md by task | Finding specific implementation details |
+| [ADR-001](architecture/ADR-001-identity-access-management.md) | Zitadel for Enterprise IAM, API keys for Community | Accepted |
+
 ## Context by Domain
 
 ### Backend Development

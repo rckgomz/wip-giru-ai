@@ -394,6 +394,179 @@ token, err := h.vault.GetOAuthToken(ctx, server.VaultSecretPath)
 
 ---
 
+## Anti-Patterns (NEVER DO)
+
+These are common mistakes that MUST be avoided. Violations will cause security issues, data corruption, or runtime errors.
+
+### Go Backend Anti-Patterns
+
+```go
+// ❌ WRONG - Using UUID instead of ULID
+import "github.com/google/uuid"
+id := uuid.New().String()
+
+// ✅ CORRECT - Always use ULID
+import "github.com/oklog/ulid/v2"
+id := ulid.Make().String()
+```
+
+```go
+// ❌ WRONG - Missing tenant_id (SECURITY VIOLATION - data leak across tenants)
+func (h *Handler) GetSubscription(c *fiber.Ctx) error {
+    sub, err := h.db.GetSubscriptionByID(ctx, subscriptionID)  // NO tenant_id!
+    return c.JSON(sub)
+}
+
+// ✅ CORRECT - Always include tenant_id
+func (h *Handler) GetSubscription(c *fiber.Ctx) error {
+    tenantID := c.Locals("tenant_id").(string)
+    sub, err := h.db.GetSubscription(ctx, db.GetSubscriptionParams{
+        ID:       subscriptionID,
+        TenantID: tenantID,  // REQUIRED
+    })
+    return c.JSON(sub)
+}
+```
+
+```go
+// ❌ WRONG - Ignoring errors
+result, _ := someFunction()
+doSomething(result)
+
+// ✅ CORRECT - Always handle errors
+result, err := someFunction()
+if err != nil {
+    return fmt.Errorf("failed to do something: %w", err)
+}
+doSomething(result)
+```
+
+```go
+// ❌ WRONG - Using float for money
+type Invoice struct {
+    Amount float64  // PRECISION LOSS!
+}
+
+// ✅ CORRECT - Use int64 cents
+type Invoice struct {
+    AmountCents int64  // $19.99 = 1999
+}
+```
+
+### Database Anti-Patterns
+
+```sql
+-- ❌ WRONG - Missing soft delete filter (returns deleted records)
+SELECT * FROM clients WHERE id = $1;
+
+-- ✅ CORRECT - Always include deleted_at check
+SELECT * FROM clients WHERE id = $1 AND deleted_at IS NULL;
+```
+
+```sql
+-- ❌ WRONG - Query without tenant_id (cross-tenant data leak)
+SELECT * FROM subscriptions WHERE client_id = $1;
+
+-- ✅ CORRECT - Always scope to tenant
+SELECT * FROM subscriptions 
+WHERE client_id = $1 
+  AND tenant_id = $2 
+  AND deleted_at IS NULL;
+```
+
+```sql
+-- ❌ WRONG - Using UUID type
+CREATE TABLE items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+);
+
+-- ✅ CORRECT - Use CHAR(26) for ULIDs (generated in application)
+CREATE TABLE items (
+    id CHAR(26) PRIMARY KEY  -- ULID generated in Go code
+);
+```
+
+### OPA Policy Anti-Patterns
+
+```rego
+# ❌ WRONG - No default (fails open on error)
+package giru.auth
+
+allow {
+    input.role == "admin"
+}
+
+# ✅ CORRECT - Always default deny
+package giru.auth
+
+default allow := false
+
+allow {
+    input.role == "admin"
+}
+```
+
+```rego
+# ❌ WRONG - No tenant isolation
+allow {
+    input.user.role == "admin"
+}
+
+# ✅ CORRECT - Verify tenant context
+allow {
+    input.user.role == "admin"
+    input.user.tenant_id == input.resource.tenant_id
+}
+```
+
+### Svelte Anti-Patterns
+
+```typescript
+// ❌ WRONG - Using 'any' type
+let data: any = await fetchData();
+
+// ✅ CORRECT - Proper typing
+let data: Subscription[] = await fetchData();
+```
+
+```svelte
+<!-- ❌ WRONG - No loading state -->
+<script lang="ts">
+  let data = $state<Item[]>([]);
+  onMount(async () => {
+    data = await api.items.list();
+  });
+</script>
+<DataTable {data} />
+
+<!-- ✅ CORRECT - Handle loading and errors -->
+<script lang="ts">
+  let data = $state<Item[]>([]);
+  let loading = $state(true);
+  let error = $state<string | null>(null);
+  
+  onMount(async () => {
+    try {
+      data = await api.items.list();
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to load';
+    } finally {
+      loading = false;
+    }
+  });
+</script>
+
+{#if loading}
+  <LoadingSpinner />
+{:else if error}
+  <ErrorAlert message={error} />
+{:else}
+  <DataTable {data} />
+{/if}
+```
+
+---
+
 ## Testing Requirements
 
 ### Coverage Targets
